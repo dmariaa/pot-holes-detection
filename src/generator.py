@@ -31,6 +31,9 @@ def get_clean_blocks(data: pd.DataFrame, window_time: int = 30):
         if selected_data.empty:
             continue
 
+        if selected_data['rel_timestamp'].iloc[-1] - selected_data['rel_timestamp'].iloc[0] < window_time:
+            continue
+
         blocks.append({
             'data': selected_data
         })

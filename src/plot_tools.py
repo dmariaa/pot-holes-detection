@@ -220,25 +220,36 @@ if __name__ == "__main__":
         Sxx = transform_to_db(Sxx)
         min_db = min(min_db, Sxx.min())
         max_db = max(max_db, Sxx.max())
-    #
+
+    # Anomalies plotting
     # plot_anomalies(data,
     #                max_db=max_db,
     #                min_db=min_db,
     #                window_time=window_time)
 
+    # Clean blocks plotting
     clean_blocks = get_clean_blocks(data, window_time=window_time)
-    clean_block = clean_blocks[0]
-    clean_block_data = clean_block['data']
-    clean_block_start_time = clean_block_data['rel_timestamp'].iloc[0] + window_time
-    clean_block_end_time = clean_block_start_time + window_time
-    data = clean_block_data[(clean_block_data['rel_timestamp'] >= clean_block_start_time) &
-                            (clean_block_data['rel_timestamp'] <= clean_block_end_time)]
 
-    output_folder_base = os.path.join(f'output/plots/{window_time}-secs/empty2')
-    os.makedirs(output_folder_base, exist_ok=True)
-    for axis in sensor_cols:
-        f, t_spec, Sxx = generate_spectrogram(data, magnitude=axis)
-        fig, ax = plot_axis(Sxx, f, t_spec, axis, max_db=max_db, min_db=min_db)
-        fig.show()
-        fig.savefig(os.path.join(output_folder_base, f"{axis}.png"))
-        plt.close(fig)
+    with tqdm.tqdm(total=len(clean_blocks)) as pbar:
+        for clean_block in clean_blocks:
+            clean_block_data = clean_block['data']
+            with tqdm.tqdm(total=(len(clean_block_data) // window_time) + len(sensor_cols)) as pbar2:
+                for i in range(len(clean_block_data) // window_time):
+                    clean_block_start_time = clean_block_data['rel_timestamp'].iloc[0] + (window_time * i)
+                    clean_block_end_time = clean_block_start_time + window_time
+                    data = clean_block_data[(clean_block_data['rel_timestamp'] >= clean_block_start_time) &
+                                            (clean_block_data['rel_timestamp'] <= clean_block_end_time)]
+
+                    output_folder_base = os.path.join(f'output/plots/{window_time}-secs/empty-{clean_block_start_time*1000:.0f}')
+                    os.makedirs(output_folder_base, exist_ok=True)
+                    for axis in sensor_cols:
+                        f, t_spec, Sxx = generate_spectrogram(data, magnitude=axis)
+                        fig, ax = plot_axis(Sxx, f, t_spec, axis, max_db=max_db, min_db=min_db)
+
+                        # fig.show()
+                        fig.savefig(os.path.join(output_folder_base, f"{axis}.png"))
+                        plt.close(fig)
+
+                        pbar2.update(1)
+
+            pbar.update(1)
