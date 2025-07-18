@@ -98,21 +98,46 @@ def generate_spectrogram(data: pd.DataFrame, magnitude: str):
     return f, t_spec, Sxx
 
 
+def generate_samples(data: pd.DataFrame, sample_name: str, window_size: int = 20, step: int = 1):
+    delta_time = data['delta_time'].iloc[1]    # assumes sampling is uniform
+    rows_per_sec = 1 / delta_time
+    rows_per_window = window_size * rows_per_sec
+    rows_per_step = step * rows_per_sec
+
+    starts = np.arange(0, len(data) - rows_per_window, rows_per_step).astype(int)
+    pass
+
+    import tqdm
+    with tqdm.tqdm(total=len(starts)) as pbar:
+        for start_idx in starts:
+            end_idx = int(start_idx + rows_per_window)
+            window_data = data.iloc[start_idx:end_idx]
+
+            labs = window_data['Label'].unique().tolist()
+            anoms = [lab.lower().replace(' ', '_')
+                     for lab in labs if lab != 'Normal']
+            if anoms:
+                label = '+'.join(sorted(set(anoms)))
+            else:
+                label = 'normal'
+
+            channels = []
+            with tqdm.tqdm(total=len(sensor_cols)) as pbar2:
+                for axis_idx, axis in enumerate(sensor_cols):
+                    f, t_spec, Sxx = generate_spectrogram(window_data, axis)
+                    channels.append(Sxx)
+                    pbar2.update(1)
+
+            sample = np.stack(channels, axis=0)
+            np.save(f"data/samples/{sample_name}_{start_idx}_{window_size}_{step}_{label}.npy", sample)
+            pbar.update(1)
+
+    data.to_csv(f"data/samples/{sample_name}.csv")
+
+
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-
-    magnitude = sensor_cols[5]
     data = load_processed_data("data/merged_data.csv")
-    f, t_spec, Sxx = generate_spectrogram(data, magnitude=magnitude)
+    generate_samples(data, "stb1", window_size=10, step=1)
 
-    Sxx_dB = 10 * np.log10(Sxx + 1e-20)
 
-    plt.figure(figsize=(6, 8))
-    # transpose Sxx so rows=times, cols=freqs
-    plt.pcolormesh(f, t_spec, Sxx_dB.T, shading='gouraud')
-    plt.xlabel('Frequency [Hz]')
-    plt.ylabel('Time [sec]')
-    plt.title(f'Spectrogram of {magnitude} over time')
-    plt.colorbar(label='Power spectral density')
-    plt.tight_layout()
-    plt.show()
