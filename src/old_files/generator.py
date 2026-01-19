@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.signal import spectrogram
 
-from src.loader import load_sensor_data, sensor_cols, load_processed_data
+from old_files.loader import load_processed_data, sensor_cols
 
 
 def get_clean_blocks(data: pd.DataFrame, window_time: int = 30):

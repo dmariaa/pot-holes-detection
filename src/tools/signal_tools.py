@@ -10,7 +10,6 @@ def transform_to_db(data: np.ndarray, reference: int = 10):
     return reference * np.log10(data + 1e-20)
 
 
-
 def extract_spectrogram(Sxx: np.ndarray, f: np.ndarray, t_spec: np.ndarray, start: float, length:float):
     end = start + length
 
