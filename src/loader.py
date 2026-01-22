@@ -1,5 +1,4 @@
 import os
-from email.policy import default
 from typing import Union
 
 import click
@@ -7,6 +6,7 @@ from pathlib import Path
 import humanfriendly
 import numpy as np
 import tqdm
+import yaml
 
 from tools.generator import generate_samples
 from tools.gps_tools import plot_route
@@ -155,7 +155,7 @@ def process(folder: Path, session_list: Union[list[int]|str], output_folder: Pat
         click.echo(f"Session route map saved to {output_map}", nl=True)
 
         # generate samples data for session
-        total_samples, iterator = generate_samples(data, window_size=window_size, step=step)
+        total_samples, iterator, spec_params = generate_samples(data, window_size=window_size, step=step)
         click.echo(f"Generating data samples for session")
         with tqdm.tqdm(total=total_samples) as pbar:
             for sample, label, start_idx in iterator:
@@ -164,6 +164,10 @@ def process(folder: Path, session_list: Union[list[int]|str], output_folder: Pat
                 pbar.update(1)
                 pbar.set_description(f"Generated data_{start_idx}_{window_size}_{step}_{label}.npy", refresh=True)
 
+        # save spectrogram params
+        spec_params_file = os.path.join(d_folder, "spectrogram_params.yaml")
+        with open(spec_params_file, "w") as f:
+            yaml.dump(spec_params, f)
 
 
 @cli.command(help="Deletes a session")

@@ -141,7 +141,22 @@ def resample_data(data: pd.DataFrame, fs: int) -> pd.DataFrame:
     df_u = df[signal_cols].resample(sample_rate).mean()
     is_interpolated = df_u.isna().all(axis=1)
 
-    df_u[signal_cols] = df_u[signal_cols].interpolate(limit=3)
+    df_u[signal_cols] = df_u[signal_cols].interpolate(
+        method="time",
+        limit=20,
+        limit_area="inside"
+    )
+
+    remaining_nans = df_u[signal_cols].isna().any(axis=1)
+
+    if remaining_nans.any():
+        bad_rows = df_u.loc[remaining_nans, signal_cols]
+        raise ValueError(
+            f"Resampling left {remaining_nans.sum()} rows with NaNs "
+            f"in signal columns after interpolation.\n"
+            f"First problematic rows:\n{bad_rows.head(5)}"
+        )
+
     df_u[gps_cols] = df[gps_cols].resample(sample_rate).ffill()
     df_u["sensor_timestamp"] = df["sensor_timestamp"].resample(sample_rate).last().astype("Int64")
 

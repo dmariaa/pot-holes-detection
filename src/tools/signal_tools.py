@@ -1,4 +1,6 @@
 import numpy as np
+import pandas as pd
+from scipy.signal import spectrogram
 
 
 def a_weight(f):
@@ -27,3 +29,14 @@ def extract_spectrogram(Sxx: np.ndarray, f: np.ndarray, t_spec: np.ndarray, star
     t_seg = t_spec[i0:i1]
 
     return Sxx_seg, f, t_seg, i0, i1
+
+
+def generate_spectrogram(data: pd.DataFrame, magnitude: str, freq: int, nperseg: int, noverlap: int, nfft: int):
+    f, t_spec, Sxx = spectrogram(data[magnitude].values,
+                                 fs=freq,
+                                 window='hann',
+                                 nperseg=nperseg,
+                                 noverlap=noverlap,
+                                 nfft=nfft
+                                 )
+    return f, t_spec, Sxx
