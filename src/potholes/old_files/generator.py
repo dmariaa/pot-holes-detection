@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.signal import spectrogram
 
-from old_files.loader import load_processed_data, sensor_cols
+from potholes.old_files.loader import load_processed_data, sensor_cols
 
 
 def get_clean_blocks(data: pd.DataFrame, window_time: int = 30):
@@ -136,7 +136,6 @@ def generate_samples(data: pd.DataFrame, sample_name: str, window_size: int = 20
 
 
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
     data = load_processed_data("data/merged_data.csv")
     generate_samples(data, "stb1", window_size=10, step=1)
 

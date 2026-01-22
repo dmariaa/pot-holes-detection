@@ -9,9 +9,9 @@ import matplotlib.ticker as mticker
 from matplotlib.offsetbox import AnchoredText
 from matplotlib.patches import Rectangle
 
-from old_files.generator import generate_spectrogram, get_anomaly_intervals, get_clean_blocks
-from old_files.loader import sensor_cols, load_processed_data, load_sensor_data
-from tools.signal_tools import transform_to_db, a_weight
+from potholes.old_files.generator import generate_spectrogram, get_anomaly_intervals
+from potholes.old_files.loader import sensor_cols, load_processed_data
+from potholes.tools import transform_to_db
 
 acoussense_values = np.array([
     [24, 0, 124],

@@ -5,7 +5,7 @@ import pandas as pd
 
 signal_cols = ['x_accel', 'y_accel', 'z_accel', 'x_gyro', 'y_gyro', 'z_gyro']
 
-from tools.signal_tools import generate_spectrogram
+from potholes.tools.signal_tools import generate_spectrogram
 
 
 def infer_fs(data: pd.DataFrame) -> int:

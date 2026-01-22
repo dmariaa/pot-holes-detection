@@ -5,7 +5,7 @@ import yaml
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
-from tools.signal_tools import transform_to_db
+from potholes.tools.signal_tools import transform_to_db
 
 
 acoussense_values = np.array([

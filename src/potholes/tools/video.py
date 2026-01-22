@@ -10,10 +10,10 @@ from tqdm import tqdm
 import pyproj
 import contextily as cx
 
-from tools.generator import infer_fs
-from tools.gps_tools import filter_by_distance
-from tools.plot import axis_names, acoussense_values
-from tools.signal_tools import transform_to_db
+from potholes.tools.generator import infer_fs
+from potholes.tools.gps_tools import filter_by_distance
+from potholes.tools.plot import axis_names, acoussense_values
+from potholes.tools.signal_tools import transform_to_db
 
 
 LABEL_COLORS = {
@@ -68,142 +68,6 @@ def prepare_gps_for_plot(df: pd.DataFrame) -> tuple[DataFrame, Any]:
     gps_unique = filter_by_distance(gps_unique, min_meters=3)
 
     return gps, gps_unique
-
-
-# def add_route_axes(session_data: pd.DataFrame, ax_map: plt.Axes):
-#     """
-#     Draws route line, labeled points, legend, and returns artists to update.
-#     """
-#     gps, gps_unique = prepare_gps_for_plot(session_data)
-#
-#     session_e0 = session_data["elapsed"].iloc[0]
-#     t_gps = (gps_unique["elapsed"].to_numpy(np.int64) - np.int64(session_e0)) / 1e9
-#
-#     ax_map.set_title("GPS route", fontsize=14)
-#
-#     # Route polyline
-#     route_line, = ax_map.plot(
-#         gps_unique["longitude"].to_numpy(),
-#         gps_unique["latitude"].to_numpy(),
-#         linewidth=2
-#     )
-#
-#     # Labeled points (colored by label)
-#     labeled = gps[gps["label"].notna()].copy()
-#     label_artists = []
-#     if not labeled.empty:
-#         for label, color in LABEL_COLORS.items():
-#             sub = labeled[labeled["label"].astype(str) == label]
-#             if sub.empty:
-#                 continue
-#             sc = ax_map.scatter(
-#                 sub["longitude"].to_numpy(),
-#                 sub["latitude"].to_numpy(),
-#                 s=24,
-#                 c=color,
-#                 label=label
-#             )
-#             label_artists.append(sc)
-#
-#         # Any unknown labels -> gray
-#         known = set(LABEL_COLORS.keys())
-#         other = labeled[~labeled["label"].astype(str).isin(known)]
-#         if not other.empty:
-#             sc = ax_map.scatter(
-#                 other["longitude"].to_numpy(),
-#                 other["latitude"].to_numpy(),
-#                 s=18,
-#                 c="gray",
-#                 label="unknown"
-#             )
-#             label_artists.append(sc)
-#
-#         ax_map.legend(loc="lower left", fontsize=10, framealpha=0.9)
-#
-#     # Current position marker (updated each frame)
-#     lon0 = gps_unique["longitude"].iloc[0]
-#     lat0 = gps_unique["latitude"].iloc[0]
-#     current_pt, = ax_map.plot([lon0], [lat0], marker="o", markersize=8)
-#
-#     # Optional: highlight segment for current window (updated each frame)
-#     # window_seg, = ax_map.plot([], [], linewidth=4, alpha=0.8)
-#
-#     ax_map.grid(True, alpha=0.2)
-#
-#     ax_map.set_xticks([])
-#     ax_map.set_yticks([])
-#
-#     ax_map.margins(x=0.02, y=0.02)
-#     ax_map.set_aspect("equal", adjustable="datalim")
-#
-#     def update_route_marker(t0: float,
-#                             t1: float):
-#         """
-#         Updates:
-#         - current point at t_mid
-#         - highlighted segment covering [t0, t1]
-#         """
-#         lon = gps_unique["longitude"].to_numpy(dtype=float)
-#         lat = gps_unique["latitude"].to_numpy(dtype=float)
-#
-#         # marker at mid time
-#         t_mid = 0.5 * (t0 + t1)
-#         j = int(np.searchsorted(t_gps, t_mid, side="left"))
-#         j = int(np.clip(j, 0, len(t_gps) - 1))
-#         current_pt.set_data([lon[j]], [lat[j]])
-#
-#         # highlight segment for current window
-#         a = int(np.searchsorted(t_gps, t0, side="left"))
-#         b = int(np.searchsorted(t_gps, t1, side="right"))
-#         a = int(np.clip(a, 0, len(t_gps) - 1))
-#         b = int(np.clip(b, a + 1, len(t_gps)))
-#
-#         # window_seg.set_data(lon[a:b], lat[a:b])
-#
-#     return update_route_marker
-
-# def set_equal_aspect_fill(ax, x, y, pad_frac=0.05):
-#     """
-#     pad_frac = fraction of route size (e.g. 0.03 = 3%)
-#     """
-#     xmin, xmax = float(np.min(x)), float(np.max(x))
-#     ymin, ymax = float(np.min(y)), float(np.max(y))
-#
-#     dx0 = xmax - xmin
-#     dy0 = ymax - ymin
-#     if dx0 <= 0 or dy0 <= 0:
-#         return
-#
-#     pad_x = pad_frac * dx0
-#     pad_y = pad_frac * dy0
-#
-#     x0, x1 = xmin - pad_x, xmax + pad_x
-#     y0, y1 = ymin - pad_y, ymax + pad_y
-#
-#     dx = x1 - x0
-#     dy = y1 - y0
-#
-#     # Need axes aspect
-#     ax.figure.canvas.draw()
-#     bbox = ax.get_window_extent()
-#     box_aspect = bbox.width / bbox.height  # y/x
-#
-#     data_aspect = dy / dx
-#     cx = 0.5 * (x0 + x1)
-#     cy = 0.5 * (y0 + y1)
-#
-#     if data_aspect < box_aspect:
-#         new_dy = box_aspect * dx
-#         y0 = cy - 0.5 * new_dy
-#         y1 = cy + 0.5 * new_dy
-#     else:
-#         new_dx = dy / box_aspect
-#         x0 = cx - 0.5 * new_dx
-#         x1 = cx + 0.5 * new_dx
-#
-#     ax.set_xlim(x0, x1)
-#     ax.set_ylim(y0, y1)
-#     ax.set_aspect("equal", adjustable="box")
 
 
 def set_equal_aspect_fill(ax, x, y, pad_frac=0.0):

@@ -6,8 +6,7 @@ import click
 import pandas as pd
 import yaml
 
-from tools.load_tools import load_data_file, merge_data, resample_data, merge_labels, load_labels_file, \
-    DataLoadException
+from potholes.tools.load_tools import load_data_file, merge_data, resample_data, merge_labels, load_labels_file
 
 
 def get_session_stats(session: dict):

@@ -8,9 +8,9 @@ import numpy as np
 import tqdm
 import yaml
 
-from tools.generator import generate_samples
-from tools.gps_tools import plot_route
-from tools.session import load_session, find_sessions, delete_session
+from potholes.tools.generator import generate_samples
+from potholes.tools.gps_tools import plot_route
+from potholes.tools.session import load_session, find_sessions, delete_session
 
 
 class SessionsParam(click.ParamType):

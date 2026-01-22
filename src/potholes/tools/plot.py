@@ -8,8 +8,8 @@ from matplotlib import pyplot as plt, colors
 
 import matplotlib.ticker as mticker
 
-from tools.generator import generate_sample, infer_fs
-from tools.signal_tools import transform_to_db
+from potholes.tools.generator import generate_sample, infer_fs
+from potholes.tools.signal_tools import transform_to_db
 
 axis_names = [
     "x_accel", "y_accel", "z_accel",
