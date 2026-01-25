@@ -1,9 +1,12 @@
-from typing import Any, List
+from datetime import datetime
+from typing import Any, List, Iterable
 
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib import colors, animation, gridspec
+from matplotlib.patches import Rectangle
 from pandas import DataFrame
 from scipy.signal import stft
 from tqdm import tqdm
@@ -12,16 +15,9 @@ import contextily as cx
 
 from potholes.tools.generator import infer_fs
 from potholes.tools.gps_tools import filter_by_distance
-from potholes.tools.plot import axis_names, acoussense_values
+from potholes.tools.plot import axis_names, acoussense_values, LABEL_COLORS
 from potholes.tools.signal_tools import transform_to_db
 
-
-LABEL_COLORS = {
-    "pothole": "red",
-    "other": "blue",
-    "manhole": "purple",
-    "speed_bump": "green",
-}
 
 def setup_figure_with_map():
     fig = plt.figure(figsize=(26, 10))
@@ -219,7 +215,6 @@ def add_route_axes(session_data: pd.DataFrame, ax_map: plt.Axes):
     return update_route_marker
 
 
-
 def compute_session_stft(session_data: pd.DataFrame):
     freq = infer_fs(session_data)
 
@@ -257,6 +252,61 @@ def compute_session_stft(session_data: pd.DataFrame):
 
     S = np.stack(Z_list, axis=0)
     return f_out, t_out, S
+
+# TODO: This code is almost duplicated in plot.py,
+#  refactor to reuse
+def extract_label_seconds(df: pd.DataFrame) -> list[tuple[float, str]]:
+    start_dt = pd.to_datetime(df['timestamp'].iloc[0])
+    labels_data = df.loc[df['label'].notna()]
+    out: list[tuple[float, str]] = []
+    for item in labels_data.to_dict(orient="records"):
+        lbl = item["label"]
+        t_dt = datetime.fromisoformat(item["timestamp_label"])
+        t0 = (t_dt - start_dt).total_seconds()
+        out.append((t0, lbl))
+
+    return out
+
+
+# TODO: This code is almost duplicated in plot.py,
+#  refactor to reuse
+def add_label_rectangles(
+    axes: Iterable[plt.Axes],
+    freqs: np.ndarray,
+    events: list[tuple[float, str]],
+    *,
+    label_colors: dict[str, str],
+    box_len_s: float = 1.0,
+    linewidth: float = 1.0,
+):
+    """
+    Adds rectangles to all axes. Returns a structure you can use later (video).
+    Returns: list of (t_center, [rect_per_axis])
+    """
+    if not events:
+        return []
+
+    x0 = float(freqs.min())
+    w = float(freqs.max() - freqs.min())
+
+    out = []
+    for ev in events:
+        color = label_colors.get(ev[1], "white")
+        y0 = float(ev[0] - box_len_s / 2)
+
+        rects = []
+        for ax in axes:
+            rect = Rectangle(
+                (x0, y0), w, box_len_s,
+                fill=False, edgecolor=color,
+                linewidth=linewidth, zorder=10
+            )
+            ax.add_patch(rect)
+            rects.append(rect)
+
+        out.append((ev[0], rects))
+
+    return out
 
 
 def add_spectrogram_axes(session_data: pd.DataFrame,
@@ -326,6 +376,12 @@ def add_spectrogram_axes(session_data: pd.DataFrame,
 
         ims.append(img)
 
+    label_events = extract_label_seconds(df=session_data)
+    label_patches = add_label_rectangles(
+        axes=axes, freqs=freqs, events=label_events,
+        label_colors=LABEL_COLORS, box_len_s=1.0
+    )
+
     def update_spectrogram_axes(frame_idx: int):
         s0 = start_bins[frame_idx]
         s1 = min(t_stft.size, s0 + win_bins)
@@ -338,8 +394,13 @@ def add_spectrogram_axes(session_data: pd.DataFrame,
         t0 = float(t_stft[s0])
         t1 = float(t_stft[s1 - 1])
 
-        return t0, t1
+        half = 0.5
+        for t_center, rects in label_patches:
+            visible = not ((t_center + half) < t0 or (t_center - half) > t1)
+            for r in rects:
+                r.set_visible(visible)
 
+        return t0, t1
 
     return ims, len(start_bins), update_spectrogram_axes
 
@@ -451,18 +512,19 @@ if __name__ == '__main__':
     @click.argument("session_file", type=click.Path(exists=True))
     @click.option("-o", "--output", type=click.Path(path_type=pathlib.Path, dir_okay=False, writable=True),
             required=True,
-            help="Write the video to this file (.mp4).")
+            help="Write the video to this file (extension not needed, .mp4 will be added).")
     @click.option("-d", "--debug", is_flag=True, default=False,
             help="Debug mode, renders only a single frame as a png.")
     def make_video(session_file: str, output: pathlib.Path, debug: bool):
+        os.makedirs(output.parent, exist_ok=True)
+        output_file = output.with_suffix(".mp4") if not debug else output.with_suffix(".png")
+
         file_name = os.path.basename(session_file)
         title = os.path.splitext(file_name)[0].removeprefix("session_")
         session_data = pd.read_csv(session_file, parse_dates=["timestamp"])
         if not debug:
-            generate_session_video(session_data, window_size=20, out_mp4=output.name, title_prefix=title)
+            generate_session_video(session_data, window_size=20, out_mp4=str(output_file), title_prefix=title)
         else:
-            output_folder = output.parent
-            output_file_name = os.path.splitext(os.path.basename(output))[0] + ".png"
-            save_debug_frame(session_data, out_png=os.path.join(output_folder, output_file_name), window_size=20, frame_idx=1, title_prefix=title)
+            save_debug_frame(session_data, out_png=str(output_file), window_size=20, frame_idx=1, title_prefix=title)
 
     make_video()

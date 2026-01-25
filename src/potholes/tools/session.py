@@ -98,18 +98,3 @@ def delete_session(session: dict):
         path = Path(file)
         path.unlink()
         click.echo(f"Deleted file: {file}")
-
-
-def process_session(session: dict, resample_freq: int, verbose: bool = False):
-    data = load_session(session=session, sample_rate=resample_freq, verbose=verbose)
-
-    if output_folder is None:
-        o_folder = session["session_path"]
-    else:
-        o_folder = output_folder
-
-    session_file = os.path.join(o_folder,
-                                f"session_{session['sensor_name']}_{session['session_key']}.csv".replace(" ", ""))
-    data.to_csv(session_file, index=False)
-    data.to_csv(session_file, index=False)
-    click.echo(f"Session saved to {session_file}", nl=True)

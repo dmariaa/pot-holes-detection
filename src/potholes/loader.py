@@ -1,3 +1,4 @@
+import json
 import os
 from typing import Union
 
@@ -5,12 +6,23 @@ import click
 from pathlib import Path
 import humanfriendly
 import numpy as np
+import pandas as pd
 import tqdm
 import yaml
 
-from potholes.tools.generator import generate_samples
+from potholes.tools.generator import generate_samples as generate_samples_func
 from potholes.tools.gps_tools import plot_route
 from potholes.tools.session import load_session, find_sessions, delete_session
+
+
+def json_default(o):
+    if isinstance(o, pd.Timestamp):
+        return o.isoformat()
+    if isinstance(o, (np.integer,)):
+        return int(o)
+    if isinstance(o, (np.floating,)):
+        return float(o)
+    return str(o)
 
 
 class SessionsParam(click.ParamType):
@@ -102,11 +114,16 @@ def list_sessions(folder: Path):
 @click.option("-o", "--output-folder", type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None, help="Output folder for the session file. Defaults to session folder.")
 @click.option("-sr", "--sample-rate", type=int, default=50, help="Resample rate in Hz (default 50)")
-@click.option("-ws", "--window-size", type=int, default=20, help="Window size in seconds (default 20)")
-@click.option("--step", type=int, default=1, help="Seconds between consecutive windows (default 1) ")
-@click.option("-v", "--verbose", is_flag=True, help="Prints load and parse debug information")
+@click.option("-g", "--generate-samples", is_flag=True, default=False,
+              help="Generate sample files for the selected sessions")
+@click.option("-ws", "--window-size", type=int, default=20,
+              help="Window size in seconds for the sample files (default 20)")
+@click.option("--step", type=int, default=1,
+              help="Seconds between consecutive windows for the sample files (default 1) ")
+@click.option("-v", "--verbose", is_flag=True,
+              help="Prints load and parse debug information")
 def process(folder: Path, session_list: Union[list[int]|str], output_folder: Path, sample_rate: int, verbose: bool,
-            window_size: int, step: int):
+            generate_samples: bool, window_size: int, step: int):
     """
     Preprocess a session and generate a data file with all the session data.
 
@@ -144,7 +161,7 @@ def process(folder: Path, session_list: Union[list[int]|str], output_folder: Pat
         click.echo(f"Total frames: {len(data)}")
 
         # save session file
-        session_file = os.path.join(o_folder, f"{session_name}.csv")
+        session_file = os.path.join(d_folder, f"{session_name}.csv")
         data.to_csv(session_file, index=False)
         click.echo(f"Session saved to {session_file}", nl=True)
 
@@ -154,20 +171,28 @@ def process(folder: Path, session_list: Union[list[int]|str], output_folder: Pat
         map.save(output_map)
         click.echo(f"Session route map saved to {output_map}", nl=True)
 
-        # generate samples data for session
-        total_samples, iterator, spec_params = generate_samples(data, window_size=window_size, step=step)
-        click.echo(f"Generating data samples for session")
-        with tqdm.tqdm(total=total_samples) as pbar:
-            for sample, label, start_idx in iterator:
-                output_file = os.path.join(d_folder, f"data_{start_idx}_{window_size}_{step}_{label}.npy")
-                np.save(output_file, sample)
-                pbar.update(1)
-                pbar.set_description(f"Generated data_{start_idx}_{window_size}_{step}_{label}.npy", refresh=True)
+        if generate_samples:
+            # generate samples data for session
+            total_samples, iterator, spec_params = generate_samples_func(data, window_size=window_size, step=step)
+            click.echo(f"Generating data samples for session")
+            with tqdm.tqdm(total=total_samples) as pbar:
+                for sample, meta in iterator:
+                    labels = meta["labels"]
+                    label_str = "+".join(sorted({e["label"] for e in labels})) if len(labels) > 0 else "normal"
+                    start_idx = meta["start_idx"]
+                    output_file = os.path.join(d_folder, f"data_{start_idx}_{window_size}_{step}_{label_str}.npz")
 
-        # save spectrogram params
-        spec_params_file = os.path.join(d_folder, "spectrogram_params.yaml")
-        with open(spec_params_file, "w") as f:
-            yaml.dump(spec_params, f)
+                    meta["sensor_name"] = session["sensor_name"]
+                    meta_str = json.dumps(meta, ensure_ascii=False, default=json_default)
+                    np.savez_compressed(output_file, sample=sample, meta=meta_str)
+
+                    pbar.update(1)
+                    pbar.set_description(f"Generated data_{start_idx}_{window_size}_{step}_{label_str}.npz", refresh=True)
+
+            # save spectrogram params
+            spec_params_file = os.path.join(d_folder, "spectrogram_params.yaml")
+            with open(spec_params_file, "w") as f:
+                yaml.dump(spec_params, f)
 
 
 @cli.command(help="Deletes a session")

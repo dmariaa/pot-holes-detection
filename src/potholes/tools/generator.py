@@ -1,4 +1,4 @@
-from typing import Iterator, Tuple
+from typing import Iterator, Tuple, List
 
 import numpy as np
 import pandas as pd
@@ -29,8 +29,39 @@ def generate_sample(window_data: pd.DataFrame, freq: int, nperseg: int, noverlap
     return sample
 
 
+def generate_window_sample(
+    window_data: pd.DataFrame,
+    *,
+    start_idx: int,
+    fs: int,
+    window_size: int,
+    step: int,
+    spectrogram_params: dict
+) -> Tuple[np.ndarray, dict]:
+    labels_data = window_data.loc[window_data['label'].notna()]
+
+    meta = {
+        "start_timestamp": window_data["timestamp"].iloc[0].isoformat(),
+        "end_timestamp": window_data["timestamp"].iloc[-1].isoformat(),
+        "start_idx": int(start_idx),
+        "end_idx": int(start_idx + len(window_data)),
+        "labels": labels_data.to_dict(orient="records"),
+        "window_size": window_size,
+        "step": step,
+        "params": spectrogram_params,
+    }
+
+    sample = generate_sample(window_data,
+                             freq=fs,
+                             nperseg=spectrogram_params["nperseg"],
+                             noverlap=spectrogram_params["noverlap"],
+                             nfft=spectrogram_params["nfft"])
+
+    return sample, meta
+
+
 def generate_samples(data: pd.DataFrame, window_size: int, step: int) \
-        -> Tuple[int, Iterator[Tuple[np.ndarray, str, int]], dict]:
+        -> Tuple[int, Iterator[Tuple[np.ndarray,dict]], dict]:
 
     rows_per_sec = infer_fs(data)
     rows_per_window = window_size * rows_per_sec
@@ -45,20 +76,18 @@ def generate_samples(data: pd.DataFrame, window_size: int, step: int) \
         "nfft": 64
     }
 
-    def _gen() -> Iterator[Tuple[np.ndarray, str, int]]:
+    def _gen() -> Iterator[Tuple[np.ndarray, dict]]:
         for start_idx in starts:
             end_idx = int(start_idx + rows_per_window)
             window_data = data.iloc[start_idx:end_idx]
-            window_data.loc[window_data["label"].isna(), ["label"]] = "normal"
-            labels = window_data.loc[window_data['label'] != "normal", "label"].unique().tolist()
-            label =  "+".join(sorted(set(labels))) if len(labels) > 0 else "normal"
 
-            sample = generate_sample(window_data,
-                                     freq=rows_per_sec,
-                                     nperseg=spectrogram_params["nperseg"],
-                                     noverlap=spectrogram_params["noverlap"],
-                                     nfft=spectrogram_params["nfft"])
+            sample, meta = generate_window_sample(window_data,
+                                                  start_idx=start_idx,
+                                                  fs=rows_per_sec,
+                                                  window_size=window_size,
+                                                  step=step,
+                                                  spectrogram_params=spectrogram_params)
 
-            yield sample, label, start_idx
+            yield sample, meta
 
     return len(starts), _gen(), spectrogram_params

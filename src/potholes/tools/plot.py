@@ -1,5 +1,7 @@
+from datetime import datetime
+import json
 import pathlib
-from typing import Tuple
+from typing import Tuple, Optional
 
 import numpy as np
 import pandas as pd
@@ -7,9 +9,19 @@ import yaml
 from matplotlib import pyplot as plt, colors
 
 import matplotlib.ticker as mticker
+from matplotlib.image import AxesImage
+from matplotlib.lines import Line2D
+from matplotlib.patches import Rectangle
 
-from potholes.tools.generator import generate_sample, infer_fs
+from potholes.tools.generator import generate_sample, infer_fs, generate_window_sample
 from potholes.tools.signal_tools import transform_to_db
+
+LABEL_COLORS = {
+    "pothole": "red",
+    "other": "blue",
+    "manhole": "purple",
+    "speed_bump": "green",
+}
 
 axis_names = [
     "x_accel", "y_accel", "z_accel",
@@ -57,7 +69,7 @@ def reconstruct_axes(Sxx, fs, nperseg, noverlap):
 
 def plot_axis(signal: np.ndarray, freqs: np.ndarray, t_spec: np.ndarray,
               axis_name: str, min_db: float, max_db: float, ax: plt.Axes, flip: bool = True, yaxis_values: np.ndarray = None)\
-        -> Tuple[plt.Figure, plt.Axes]:
+        -> AxesImage:
     signal_t = signal.T
 
     signal_db = transform_to_db(signal_t)
@@ -97,8 +109,115 @@ def plot_axis(signal: np.ndarray, freqs: np.ndarray, t_spec: np.ndarray,
     return pm
 
 
+def plot_title(fig: plt.Figure, metadata: dict):
+    sensor_name: str = metadata["sensor_name"]
+
+    start_dt = datetime.fromisoformat(metadata["start_timestamp"])
+    end_dt = datetime.fromisoformat(metadata["end_timestamp"])
+
+    date_str = start_dt.strftime("%Y-%m-%d")
+    start_time = start_dt.strftime("%H:%M:%S.%f")[:-3]
+    end_time = end_dt.strftime("%H:%M:%S.%f")[:-3]
+
+    title = (
+        f"{sensor_name.replace(' ', '')} | "
+        f"{date_str} {start_time}–{end_time}"
+    )
+
+    labels = { x['label']: LABEL_COLORS[x['label']] for x in metadata['labels'] }
+    add_label_legend(fig, labels)
+
+    fig.text(0.5, 0.97, title,
+             ha="center",
+             va="center",
+             fontsize=16)
+
+    return fig
+
+
+def add_label_legend(fig, label_colors: dict,
+                     loc="center",
+                     bbox_to_anchor=(0.5, 0.94),
+                     fontsize=12):
+
+    if len(label_colors) == 0:
+        return
+
+    handles = [
+        Line2D(
+            [0], [0],
+            color=color,
+            lw=4,
+            label=label
+        )
+        for label, color in label_colors.items()
+    ]
+
+    fig.legend(
+        handles=handles,
+        loc=loc,
+        bbox_to_anchor=bbox_to_anchor,
+        ncol=len(label_colors),
+        frameon=False,
+        fontsize=fontsize
+    )
+
+
+def extract_label_seconds(metadata: dict) -> list[tuple[float, str]]:
+    start_dt = datetime.fromisoformat(metadata["start_timestamp"])
+
+    out: list[tuple[float, str]] = []
+    for item in metadata["labels"]:
+        lbl = item["label"]
+        t_dt = datetime.fromisoformat(item["timestamp_label"])
+        t0 = (t_dt - start_dt).total_seconds()
+
+        out.append((t0, lbl))
+
+    return out
+
+
+def add_label_boxes(axes: list[plt.Axes],
+                    freqs: np.ndarray,
+                    t_spec: np.ndarray,
+                    label_events: list[tuple[float, str]],
+                    box_len_s: float = 1.0,
+                    linewidth: float = 1.0):
+    """
+    Draw a full-width rectangle for each label, 1 second tall, on every axis.
+    """
+    if not label_events:
+        return
+
+    x0 = float(freqs.min())
+    w = float(freqs.max() - freqs.min())
+
+    t_min = float(min(t_spec.min(), t_spec.max()))
+    t_max = float(max(t_spec.min(), t_spec.max()))
+
+    for t0, lbl in label_events:
+        color = LABEL_COLORS.get(lbl, "white")
+
+        y0 = t0 - box_len_s / 2
+        y0 = max(t_min, min(y0, t_max - box_len_s))
+
+        for ax in axes:
+            ax.add_patch(
+                Rectangle(
+                    (x0, y0),
+                    w,
+                    box_len_s,
+                    fill=False,
+                    edgecolor=color,
+                    linewidth=linewidth,
+                    zorder=10,
+                )
+            )
+
+
 def plot_sample(spectrogram_data: np.ndarray,
                 spectrogram_params: dict,
+                label_events: list[tuple[float, str]] = None,
                 max_db: float = None,
                 min_db: float = None):
     d = spectrogram_data[0]
@@ -126,7 +245,7 @@ def plot_sample(spectrogram_data: np.ndarray,
                              constrained_layout=False
                              )
 
-    fig.subplots_adjust(left=0.085, right=0.9, bottom=0.10, top=0.92, wspace=0.05, hspace=0.1)
+    fig.subplots_adjust(left=0.085, right=0.915, bottom=0.08, top=0.90, wspace=0.05, hspace=0.1)
 
     axes = axes.flatten()
     pms = []
@@ -160,22 +279,34 @@ def plot_sample(spectrogram_data: np.ndarray,
 
         pms.append(pm)
 
-    cax = fig.add_axes([0.92, 0.15, 0.02, 0.70])
+    if label_events:
+        add_label_boxes(
+            axes=list(axes),
+            freqs=freqs,
+            t_spec=times,
+            label_events=label_events,
+            box_len_s=1.0
+        )
+
+    cax = fig.add_axes((0.93, 0.15, 0.02, 0.70))
     cb = fig.colorbar(pms[0], cax=cax)
-    cb.set_label('dB', fontsize=14)
+    cb.set_label("")  # remove side label
+    cax.set_title("dB", fontsize=14, pad=8)
 
     return fig
 
 
-def plot_session_sample(session_data: pd.DataFrame,
+def plot_session(session_file: pathlib.Path,
                         start: int,
-                        window_size: int,
-                        ):
+                        window_size: int):
+    sensor_name = session_file.name.split("_")[1]
+    session_data = pd.read_csv(session_file, parse_dates=["timestamp"])
+
     rows_per_sec = infer_fs(session_data)
     rows_per_window = window_size * rows_per_sec
-
     start_idx = start * rows_per_sec
     end_idx = int(start_idx + rows_per_window)
+
     window_data = session_data.iloc[start_idx:end_idx]
 
     spectrogram_params = {
@@ -185,13 +316,16 @@ def plot_session_sample(session_data: pd.DataFrame,
         "nfft": 64
     }
 
-    sample = generate_sample(window_data,
-                             freq=rows_per_sec,
-                             nperseg=spectrogram_params["nperseg"],
-                             noverlap=spectrogram_params["noverlap"],
-                             nfft=spectrogram_params["nfft"])
-
+    sample, metadata = generate_window_sample(window_data,
+                                          start_idx=start_idx,
+                                          fs=rows_per_sec,
+                                          window_size=window_size,
+                                          step=0,
+                                          spectrogram_params=spectrogram_params,
+                                          )
+    metadata["sensor_name"] = sensor_name
     fig = plot_sample(sample, spectrogram_params)
+    fig = plot_title(fig, metadata=metadata)
     return fig
 
 
@@ -208,18 +342,25 @@ if __name__ == '__main__':
         )(func)
 
     @click.group()
-    def cli(ctx, output: click.File):
+    def cli():
         pass
 
     @cli.command(name="plot-sample")
-    @click.argument("sample_file", type=click.File("rb"))
+    @click.argument("sample_file",
+                    type=click.Path(exists=True, dir_okay=False, file_okay=True, readable=True, path_type=pathlib.Path))
     @output_option
-    def plot_file(sample_file: pathlib.Path, output: pathlib.Path | None):
-        sample_path = os.path.dirname(sample_file.name)
-        spec_params_file = os.path.join(sample_path, R"spectrogram_params.yaml")
+    def plot_file(sample_file: pathlib.Path, output: Optional[pathlib.Path]):
+        os.makedirs(output.parent, exist_ok=True)
+
+        spec_params_file = os.path.join(sample_file.parent, R"spectrogram_params.yaml")
         spec_params = yaml.safe_load(open(spec_params_file))
-        data = np.load(sample_file.name)
-        fig = plot_sample(data, spec_params)
+        d = np.load(sample_file, allow_pickle=False)
+        data = d["sample"]
+        metadata = json.loads(d["meta"].item())
+
+        label_events = extract_label_seconds(metadata)
+        fig = plot_sample(data, spec_params, label_events=label_events)
+        fig = plot_title(fig, metadata=metadata)
 
         if output is not None:
             fig.savefig(output)
@@ -227,11 +368,16 @@ if __name__ == '__main__':
             fig.show()
 
     @cli.command(name="plot-session-sample")
-    @click.argument("session_file", type=click.File("rb"))
+    @click.argument("session_file",
+                    type=click.Path(exists=True, dir_okay=False, file_okay=True, readable=True, path_type=pathlib.Path))
+    @click.argument("start_second", type=int, required=True)
+    @click.option("-w", "--window-size", type=int, required=False, default=20,
+                  help="Window size")
     @output_option
-    def plot_session_sample(session_file: pathlib.Path, output: pathlib.Path | None):
-        session_data = pd.read_csv(session_file.name, parse_dates=["timestamp"])
-        fig = plot_session_sample(session_data, start=0, window_size=20)
+    def plot_session_sample(session_file: pathlib.Path, start_second: int, window_size: int, output: Optional[pathlib.Path]):
+        os.makedirs(output.parent, exist_ok=True)
+
+        fig = plot_session(session_file, start=start_second, window_size=window_size)
 
         if output is not None:
             fig.savefig(output)
