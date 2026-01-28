@@ -350,8 +350,6 @@ if __name__ == '__main__':
                     type=click.Path(exists=True, dir_okay=False, file_okay=True, readable=True, path_type=pathlib.Path))
     @output_option
     def plot_file(sample_file: pathlib.Path, output: Optional[pathlib.Path]):
-        os.makedirs(output.parent, exist_ok=True)
-
         spec_params_file = os.path.join(sample_file.parent, R"spectrogram_params.yaml")
         spec_params = yaml.safe_load(open(spec_params_file))
         d = np.load(sample_file, allow_pickle=False)
@@ -363,9 +361,10 @@ if __name__ == '__main__':
         fig = plot_title(fig, metadata=metadata)
 
         if output is not None:
+            os.makedirs(output.parent, exist_ok=True)
             fig.savefig(output)
         else:
-            fig.show()
+            plt.show()
 
     @cli.command(name="plot-session-sample")
     @click.argument("session_file",
@@ -375,13 +374,12 @@ if __name__ == '__main__':
                   help="Window size")
     @output_option
     def plot_session_sample(session_file: pathlib.Path, start_second: int, window_size: int, output: Optional[pathlib.Path]):
-        os.makedirs(output.parent, exist_ok=True)
-
         fig = plot_session(session_file, start=start_second, window_size=window_size)
 
         if output is not None:
+            os.makedirs(output.parent, exist_ok=True)
             fig.savefig(output)
         else:
-            fig.show()
+            plt.show()
 
     cli()
