@@ -16,12 +16,45 @@ def get_session_stats(session: dict):
     d = accel_data.sort_values("timestamp").copy()
     ts = d["timestamp"]
     records = len(d)
-    time = (ts.iloc[-1] - ts.iloc[0])
+    time = (ts.iloc[-1] - ts.iloc[0]) if records else pd.Timedelta(0)
+
+    def summarize_series(values: pd.Series) -> dict:
+        if values.empty:
+            return {"min": None, "max": None, "mean": None, "median": None, "std": None}
+
+        return {
+            "min": float(values.min()),
+            "max": float(values.max()),
+            "mean": float(values.mean()),
+            "median": float(values.median()),
+            "std": float(values.std(ddof=0)) if len(values) > 1 else 0.0,
+        }
+
+    dt_seconds = ts.diff().dropna().dt.total_seconds()
+    dt_seconds = dt_seconds[dt_seconds > 0]
+    interval_stats = summarize_series(dt_seconds)
+
+    rate_stats = summarize_series(1.0 / dt_seconds) if not dt_seconds.empty else summarize_series(dt_seconds)
+    overall_rate = None
+    total_seconds = float(time.total_seconds())
+    if records > 1 and total_seconds > 0:
+        overall_rate = float((records - 1) / total_seconds)
+
+    gps_missing = d["lat"].isna() | d["lon"].isna()
+    gps_missing_pct = float(gps_missing.sum() * 100 / records) if records else 0.0
+    duplicate_timestamps = int(ts.duplicated().sum())
 
     return {
         'frames': records,
         'time': time,
-        'labels': labels_data.groupby('label').size().to_dict()
+        'labels': labels_data.groupby('label').size().to_dict(),
+        'frame_interval_seconds': interval_stats,
+        'frame_rate_hz': {
+            **rate_stats,
+            'overall': overall_rate
+        },
+        'gps_missing_pct': gps_missing_pct,
+        'duplicate_timestamps': duplicate_timestamps
     }
 
 

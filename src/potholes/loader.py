@@ -12,7 +12,7 @@ import yaml
 
 from potholes.tools.generator import generate_samples as generate_samples_func
 from potholes.tools.gps_tools import plot_route
-from potholes.tools.session import load_session, find_sessions, delete_session
+from potholes.tools.session import load_session, find_sessions, delete_session, get_session_stats
 
 
 def json_default(o):
@@ -91,6 +91,78 @@ def print_sessions_table(sessions: list[dict]):
     for i, s in enumerate(sessions, 1):
         print_session_row(session=s, index=i)
 
+def _format_stat_value(value: float | None, decimals: int) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:.{decimals}f}"
+
+
+def _print_metric_block(title: str, stats: dict, order: list[str], unit: str, decimals: int):
+    if not stats:
+        return
+
+    click.echo(f"{title}:")
+    for key in order:
+        if key not in stats:
+            continue
+        value_str = _format_stat_value(stats.get(key), decimals)
+        click.echo(f"  {key:<7} {value_str} {unit}")
+    click.echo("")
+
+
+def print_session_stats(session: dict, stats: dict):
+    click.echo(f"Session: {session['sensor_name']} ({session['session_key']})")
+    click.echo(f"Start:   {session['session_start_time']}")
+    click.echo(f"Path:    {session['session_path']}")
+    click.echo("")
+
+    frames = stats.get("frames", 0)
+    duration = stats.get("time")
+    click.echo(f"Frames:  {frames}")
+    if duration is not None:
+        click.echo(f"Duration: {humanfriendly.format_timespan(duration)}")
+
+    overall_rate = stats.get("frame_rate_hz", {}).get("overall")
+    if overall_rate is not None:
+        click.echo(f"Overall rate: {_format_stat_value(overall_rate, 2)} Hz")
+    click.echo("")
+
+    _print_metric_block(
+        title="Frame rate",
+        stats=stats.get("frame_rate_hz", {}),
+        order=["min", "mean", "median", "max", "std", "overall"],
+        unit="Hz",
+        decimals=2,
+    )
+    _print_metric_block(
+        title="Frame interval",
+        stats=stats.get("frame_interval_seconds", {}),
+        order=["min", "mean", "median", "max", "std"],
+        unit="s",
+        decimals=4,
+    )
+
+    gps_missing_pct = stats.get("gps_missing_pct")
+    if gps_missing_pct is not None:
+        missing_rows = int(round(frames * gps_missing_pct / 100)) if frames else 0
+        click.echo(f"GPS missing: {gps_missing_pct:.2f}% ({missing_rows} rows)")
+
+    dup_ts = stats.get("duplicate_timestamps")
+    if dup_ts is not None:
+        click.echo(f"Duplicate timestamps: {dup_ts}")
+    click.echo("")
+
+    labels = stats.get("labels", {}) or {}
+    click.echo("Labels:")
+    if not labels:
+        click.echo("  (none)")
+        return
+
+    label_order = ["pothole", "speed_bump", "manhole", "other"]
+    ordered = label_order + sorted([k for k in labels.keys() if k not in label_order])
+    for label in ordered:
+        click.echo(f"  {label:<12} {labels.get(label, 0)}")
+
 
 @click.group()
 def cli():
@@ -104,6 +176,17 @@ def cli():
 def list_sessions(folder: Path):
     sessions = find_sessions(str(folder))
     print_sessions_table(sessions)
+
+
+@cli.command(help="Get several statistics for a session", name="stats")
+@click.argument("folder",type=click.Path(exists=True, file_okay=False, path_type=Path), required=True,
+                metavar="FOLDER")
+@click.argument("session_number", type=int, required=True, metavar="SESSION_NUMBER")
+def session_stats(folder: Path, session_number: int):
+    sessions = find_sessions(str(folder))
+    session = sessions[session_number - 1]
+    stats = session.get("stats") or get_session_stats(session)
+    print_session_stats(session=session, stats=stats)
 
 
 @cli.command()

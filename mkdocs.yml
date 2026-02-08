@@ -1,0 +1,50 @@
+site_name: Potholes detection library
+repo_url: https://github.com/yourname/yourrepo
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.sections
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight:
+     use_pygments: true
+     pygments_lang_class: true
+  - pymdownx.superfences
+  - pymdownx.details
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - section-index
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google   # or "numpy"
+            show_source: false
+            show_signature_annotations: true
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Data layout:
+      - Overview: data-layout.md
+      - Session files: data/session-files.md
+      - Generated files: data/generated-files.md
+  - CLI usage:
+    - Overview: cli.md
+    - Loader tool: cli/loader.md
+    - Plotter tool: cli/plotter.md
+    - Video tool: cli/video.md
+  - API Reference:
+      - api/index.md
+
+extra_css:
+  - stylesheets/extra.css

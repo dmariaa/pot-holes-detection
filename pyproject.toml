@@ -68,3 +68,15 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[dependency-groups]
+dev = [
+    "livereload>=2.7.1",
+    "mkdocs>=1.6.1",
+    "mkdocs-autorefs>=1.4.3",
+    "mkdocs-material>=9.7.1",
+    "mkdocs-section-index>=0.3.10",
+    "mkdocstrings[python]>=1.0.3",
+    "pymdown-extensions>=10.20.1",
+    "watchdog>=6.0.0",
+]
