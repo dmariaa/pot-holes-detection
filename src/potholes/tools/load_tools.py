@@ -25,7 +25,7 @@ def load_data_file(filepath: str, silent: bool = False) -> pd.DataFrame:
         skipinitialspace=True,
     )
 
-    data = data.sort_values(by="sensor_timestamp")
+    data = data.sort_index().sort_values(by="sensor_timestamp", kind="mergesort")
 
     if not silent:
         print(f"Loading {filepath}")
@@ -51,7 +51,7 @@ def load_data_file(filepath: str, silent: bool = False) -> pd.DataFrame:
         t0 = ts.iloc[0]
         data['elapsed'] = (ts - t0).dt.total_seconds().mul(1e9).astype("int64")
     else:
-        t0_ns = data["timestamp"].iloc[0]
+        t0_ns = data["timestamp"].iloc[0] * 1_000_000
         e0 = data["elapsed"].iloc[0]
 
         data["timestamp"] = pd.to_datetime(

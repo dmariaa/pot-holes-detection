@@ -80,7 +80,7 @@ def plot_axis(signal: np.ndarray, freqs: np.ndarray, t_spec: np.ndarray,
                    origin='lower',
                    extent=(
                        freqs.min(), freqs.max(),
-                       t_spec.max(), t_spec.min()
+                       t_spec.min(), t_spec.max()
                    ),
                    cmap=acoussense_cmap,
                    vmin=min_db,
@@ -324,7 +324,8 @@ def plot_session(session_file: pathlib.Path,
                                           spectrogram_params=spectrogram_params,
                                           )
     metadata["sensor_name"] = sensor_name
-    fig = plot_sample(sample, spectrogram_params)
+    label_events = extract_label_seconds(metadata)
+    fig = plot_sample(sample, spectrogram_params, label_events=label_events)
     fig = plot_title(fig, metadata=metadata)
     return fig
 

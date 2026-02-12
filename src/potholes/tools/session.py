@@ -44,6 +44,8 @@ def get_session_stats(session: dict):
     gps_missing_pct = float(gps_missing.sum() * 100 / records) if records else 0.0
     duplicate_timestamps = int(ts.duplicated().sum())
 
+    duplicate_sensor_timestamps = int(d["sensor_timestamp"].duplicated().sum())
+
     return {
         'frames': records,
         'time': time,
@@ -54,7 +56,8 @@ def get_session_stats(session: dict):
             'overall': overall_rate
         },
         'gps_missing_pct': gps_missing_pct,
-        'duplicate_timestamps': duplicate_timestamps
+        'duplicate_timestamps': duplicate_timestamps,
+        'duplicate_sensor_timestamps': duplicate_sensor_timestamps,
     }
 
 
@@ -105,6 +108,17 @@ def load_session(session: dict, sample_rate: int, verbose: bool = False) -> pd.D
     # 1) Load data
     accel_data = load_data_file(session["accel_file"], silent=(not verbose))
     gyro_data = load_data_file(session["gyro_file"], silent=(not verbose))
+
+    # 2) check for duplicate sensor timestamp warn and remove
+    accel_dupes = accel_data["sensor_timestamp"].duplicated(keep='first')
+    if accel_dupes.any():
+        click.secho(f"Found {accel_dupes.sum()} session timestamps in accelerometer data, removing", fg='yellow')
+        accel_data = accel_data.drop(accel_data.index[accel_dupes])
+
+    gyro_dupes = gyro_data["sensor_timestamp"].duplicated(keep='first')
+    if gyro_dupes.any():
+        click.secho(f"Found {gyro_dupes.sum()} session timestamps in gyroscope data, removing", fg='yellow')
+        gyro_data = gyro_data.drop(gyro_data.index[gyro_dupes])
 
     # 2) Merge data
     merged_data = merge_data(accel_data, gyro_data)

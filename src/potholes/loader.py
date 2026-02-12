@@ -150,6 +150,10 @@ def print_session_stats(session: dict, stats: dict):
     dup_ts = stats.get("duplicate_timestamps")
     if dup_ts is not None:
         click.echo(f"Duplicate timestamps: {dup_ts}")
+
+    dup_sensor_ts = stats.get("duplicate_sensor_timestamps")
+    if dup_sensor_ts is not None:
+        click.echo(f"Duplicate sensor timestamps: {dup_sensor_ts}")
     click.echo("")
 
     labels = stats.get("labels", {}) or {}

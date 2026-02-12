@@ -73,6 +73,12 @@ def plot_route(df: pd.DataFrame):
         "manhole": "purple",
         "speed_bump": "green",
     }
+    LABEL_DISPLAY = {
+        "pothole": "Pothole",
+        "speed_bump": "Speed bump",
+        "manhole": "Manhole",
+        "other": "Other",
+    }
 
     gps = (
         df.dropna(subset=["latitude", "longitude"])
@@ -95,10 +101,37 @@ def plot_route(df: pd.DataFrame):
         weight=3
     ).add_to(m)
 
-    labeled = gps[gps["label"].notna()]
+    labeled = gps[gps["label"].notna()].copy()
+
+    label_counts = labeled["label"].astype(str).value_counts().to_dict()
+
+    legend_order = ["pothole", "speed_bump", "manhole", "other"]
+    for label in label_counts:
+        if label not in LABEL_COLORS:
+            LABEL_COLORS[label] = "gray"
+        if label not in LABEL_DISPLAY:
+            LABEL_DISPLAY[label] = str(label).replace("_", " ").title()
+        if label not in legend_order:
+            legend_order.append(label)
+
+    # Group markers by label so each group can be toggled from the custom legend.
+    label_groups = {}
+    for label in legend_order:
+        group = folium.FeatureGroup(name=label, show=True)
+        group.add_to(m)
+        label_groups[label] = group
+
     for _, r in labeled.iterrows():
         label = str(r["label"])
         color = LABEL_COLORS.get(label, "gray")  # fallback
+        elapsed_value = pd.to_numeric(r.get("elapsed"), errors="coerce") / 1e9
+        elapsed_text = "N/A" if pd.isna(elapsed_value) else f"{elapsed_value:.3f} s"
+        popup_html = (
+            f"<b>Label:</b> {label}<br>"
+            f"<b>Elapsed:</b> {elapsed_text}<br>"
+            f"<b>Latitude:</b> {r['latitude']:.7f}<br>"
+            f"<b>Longitude:</b> {r['longitude']:.7f}"
+        )
 
         folium.CircleMarker(
             location=[r["latitude"], r["longitude"]],
@@ -107,28 +140,93 @@ def plot_route(df: pd.DataFrame):
             fill=True,
             fill_color=color,
             fill_opacity=0.9,
-            popup=label
-        ).add_to(m)
+            popup=folium.Popup(popup_html, max_width=300)
+        ).add_to(label_groups[label])
 
-    legend_html = """
+    legend_rows = "".join(
+        (
+            f'<div class="legend-item" data-layer="{label_groups[label].get_name()}">'
+            f'<span style="color:{LABEL_COLORS[label]};">●</span> '
+            f'{LABEL_DISPLAY[label]} ({label_counts.get(label, 0)})'
+            f"</div>"
+        )
+        for label in legend_order
+    )
+
+    legend_html = f"""
     <div style="
         position: fixed;
         bottom: 40px;
         left: 40px;
         z-index:9999;
         background-color:white;
-        padding:10px;   
+        padding:10px;
         border:2px solid grey;
         font-size:14px;
+        min-width: 170px;
     ">
     <b>Labels</b><br>
-    <span style="color:red;">●</span> Pothole<br>
-    <span style="color:green;">●</span> Speed bump<br>
-    <span style="color:purple;">●</span> Manhole<br>
-    <span style="color:blue;">●</span> Other<br>
+    {legend_rows}
     </div>
     """
     m.get_root().html.add_child(folium.Element(legend_html))
+
+    legend_style = """
+    <style>
+      .legend-item {
+        cursor: pointer;
+        user-select: none;
+        margin-top: 4px;
+      }
+      .legend-item.inactive {
+        opacity: 0.35;
+      }
+    </style>
+    """
+    m.get_root().html.add_child(folium.Element(legend_style))
+
+    toggle_script = f"""
+    (function() {{
+      function setupLegendToggles(attempt) {{
+        var mapRef = window["{m.get_name()}"];
+        if (!mapRef) {{
+          if (attempt < 40) {{
+            setTimeout(function() {{ setupLegendToggles(attempt + 1); }}, 100);
+          }}
+          return;
+        }}
+
+        var legendItems = document.querySelectorAll(".legend-item");
+        legendItems.forEach(function(item) {{
+          var layerName = item.getAttribute("data-layer");
+          var layerRef = window[layerName];
+          if (!layerRef) {{
+            return;
+          }}
+
+          item.classList.toggle("inactive", !mapRef.hasLayer(layerRef));
+          item.addEventListener("click", function() {{
+            if (mapRef.hasLayer(layerRef)) {{
+              mapRef.removeLayer(layerRef);
+              item.classList.add("inactive");
+            }} else {{
+              mapRef.addLayer(layerRef);
+              item.classList.remove("inactive");
+            }}
+          }});
+        }});
+      }}
+
+      if (document.readyState === "loading") {{
+        document.addEventListener("DOMContentLoaded", function() {{
+          setupLegendToggles(0);
+        }});
+      }} else {{
+        setupLegendToggles(0);
+      }}
+    }})();
+    """
+    m.get_root().script.add_child(folium.Element(toggle_script))
 
     return m
 
