@@ -15,3 +15,5 @@ Project docs live in `docs/` and are served with MkDocs:
 ```powershell
 uv run mkdocs serve --livereload
 ```
+
+The current documentation lives in [Pothole detection documentation](https://dmariaa.github.io/pot-holes-detection/data/generated-files/)
