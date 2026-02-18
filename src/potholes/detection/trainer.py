@@ -287,12 +287,13 @@ class Trainer:
         )
 
         fig.show()
+        fig.write_image(os.path.join(model_path, 'confusion_matrix.png'))
 
 if __name__=="__main__":
     training_session = "training-001"
 
     config_trainer = {
-        'batch_size': 8,
+        'batch_size': 32,
         'epochs': 100,
         'learning_rate': 0.005,
         'patience': 10,
