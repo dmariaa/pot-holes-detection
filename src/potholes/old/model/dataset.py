@@ -33,3 +33,21 @@ class CustomCSVDataset(Dataset):
             data = self.transform(data)
 
         return data, label
+
+
+if __name__ == "__main__":
+    from torchvision import transforms as tr
+
+
+    class ToTensor(object):
+        def __call__(self, sample):
+            return torch.from_numpy(sample).float()
+
+
+    transforms = tr.Compose([
+        tr.Resize((224, 224))
+    ])
+
+    dataset = CustomCSVDataset("data_old/train_unbalanced.csv", transform=transforms)
+    row = dataset[0]
+    pass
