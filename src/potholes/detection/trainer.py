@@ -11,7 +11,8 @@ from tqdm import tqdm
 
 import plotly.graph_objects as go
 
-from potholes.detection.data import PotholesDataset, stratified_split_indices, labels_to_id, RoadLabel
+from potholes.detection.data import get_dataset
+from potholes.detection.data.dataset import labels_to_id, stratified_split_indices, RoadLabel
 from potholes.detection.models.transformer import load_model
 
 
@@ -36,7 +37,7 @@ class Trainer:
                 f.write(yaml.safe_dump(config))
 
     def __prepare_data__(self):
-        dataset = PotholesDataset(config=self.config.get('data'))
+        dataset = get_dataset(config=self.config.get('data'))
 
         train_idx, val_idx, test_idx = stratified_split_indices(dataset, val_ratio=0.2, test_ratio=0.2, shuffle=False)
 
@@ -216,7 +217,7 @@ class Trainer:
 
         config['test_mode'] = True
 
-        dataset = PotholesDataset(config=config.get('data'))
+        dataset = get_dataset(config=config)
         split = np.load(split_file)
         test_idx = split['test_idx']
 
@@ -290,7 +291,7 @@ class Trainer:
         fig.write_image(os.path.join(model_path, 'confusion_matrix.png'))
 
 if __name__=="__main__":
-    training_session = "training-001"
+    training_session = "training-002-old-data"
 
     config_trainer = {
         'batch_size': 32,
@@ -298,7 +299,8 @@ if __name__=="__main__":
         'learning_rate': 0.005,
         'patience': 10,
         'data': {
-            'data_folder': 'dataset',
+            'version': 1,
+            'data_folder': 'data_old',
             'generate': False,
             'window_size': 10,
             'step': 1,
@@ -307,7 +309,7 @@ if __name__=="__main__":
         'training_log_folder': os.path.join('output/training', training_session)
     }
 
-    # trainer = Trainer(config_trainer)
-    # trainer()
+    trainer = Trainer(config_trainer)
+    trainer()
 
-    Trainer.test(os.path.join('output/training', training_session))
+    # Trainer.test(os.path.join('output/training', training_session))
