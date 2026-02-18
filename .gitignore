@@ -295,8 +295,8 @@ http-client.private.env.json
 
 .idea/
 
-data/
-output/
-bad_data/
-data_old/
-dataset/
+/data/
+/output/
+/bad_data/
+/data_old/
+/dataset/
