@@ -1,4 +1,6 @@
 import os
+import pathlib
+from datetime import datetime
 
 import click
 import numpy as np
@@ -217,7 +219,7 @@ class Trainer:
 
         config['test_mode'] = True
 
-        dataset = get_dataset(config=config)
+        dataset = get_dataset(config=config.get('data'))
         split = np.load(split_file)
         test_idx = split['test_idx']
 
@@ -290,25 +292,148 @@ class Trainer:
         fig.show()
 
 if __name__=="__main__":
-    training_session = "training-002-old-data"
+    import click
+    from click.core import ParameterSource
 
-    config_trainer = {
-        'batch_size': 8,
-        'epochs': 100,
-        'learning_rate': 0.005,
-        'patience': 10,
-        'data': {
-            'version': 1,
-            'data_folder': 'data_old',
-            'generate': False,
-            'window_size': 10,
-            'step': 1,
-            'verbose': True,
-        },
-        'training_log_folder': os.path.join('output/training', training_session)
-    }
+    @click.group()
+    def cli():
+        pass
 
-    trainer = Trainer(config_trainer)
-    trainer()
+    @cli.command()
+    @click.argument("model_path", type=click.Path(exists=True, dir_okay=True, file_okay=False,
+                                                  readable=True, path_type=pathlib.Path), required=True)
+    def test(model_path: pathlib.Path):
+        Trainer.test(str(model_path))
 
-    # Trainer.test(os.path.join('output/training', training_session))
+
+    def _default_training_log_folder() -> str:
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        return os.path.join("output", "training", f"training-{timestamp}")
+
+    def _merge_config(base_config: dict, overrides: dict) -> dict:
+        config = dict(base_config or {})
+        data_config = dict(config.get("data") or {})
+        config["data"] = data_config
+
+        train_defaults = {
+            "batch_size": 8,
+            "epochs": 100,
+            "learning_rate": 0.005,
+            "patience": 10,
+        }
+        data_defaults = {
+            "version": 2,
+            "data_folder": "dataset",
+            "generate": False,
+            "step": 1,
+            "verbose": True,
+            "window_size": 10,
+        }
+
+        for key, value in train_defaults.items():
+            if config.get(key) is None:
+                config[key] = value
+
+        for key, value in data_defaults.items():
+            if data_config.get(key) is None:
+                data_config[key] = value
+
+        for key, value in overrides.get("train", {}).items():
+            if value is not None:
+                config[key] = value
+
+        for key, value in overrides.get("data", {}).items():
+            if value is not None:
+                data_config[key] = value
+
+        if not config.get("training_log_folder"):
+            config["training_log_folder"] = _default_training_log_folder()
+
+        return config
+
+    @cli.command()
+    @click.argument(
+        "config_file",
+        required=False,
+        type=click.Path(exists=True, dir_okay=False, file_okay=True, readable=True),
+    )
+    @click.option(
+        "--use-defaults",
+        is_flag=True,
+        default=False,
+        help="Allow running without a config file using built-in defaults.",
+        show_default=True,
+    )
+    @click.option("--training-log-folder", type=click.Path(dir_okay=True, file_okay=False), default=None, show_default="auto")
+    @click.option("--batch-size", type=int, default=8, show_default=True)
+    @click.option("--epochs", type=int, default=100, show_default=True)
+    @click.option("--learning-rate", type=float, default=0.005, show_default=True)
+    @click.option("--patience", type=int, default=10, show_default=True)
+    @click.option("--data-folder", type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True), default="dataset", show_default=True)
+    @click.option("--data-version", type=click.IntRange(1, 2), default=2, show_default=True)
+    @click.option("--generate/--no-generate", default=False, show_default=True)
+    @click.option("--window-size", type=int, default=10, show_default=True)
+    @click.option("--step", type=int, default=1, show_default=True)
+    @click.option("--verbose/--no-verbose", default=True, show_default=True)
+    def train(
+        config_file: str,
+        use_defaults: bool,
+        training_log_folder: str,
+        batch_size: int,
+        epochs: int,
+        learning_rate: float,
+        patience: int,
+        data_folder: str,
+        data_version: int,
+        generate: bool,
+        window_size: int,
+        step: int,
+        verbose: bool,
+    ):
+        ctx = click.get_current_context()
+
+        def _is_provided(param_name: str) -> bool:
+            return ctx.get_parameter_source(param_name) != ParameterSource.DEFAULT
+
+        if config_file is None and not use_defaults:
+
+            click.echo(
+                click.style("\nError: Provide CONFIG_FILE or pass --use-defaults to run with built-in defaults.",
+                           fg="red", bold=True), err=True, nl=True, color=True)
+            click.echo(ctx.get_help())
+            ctx.exit(2)
+
+        config = {}
+        if config_file:
+            with open(config_file, "r") as f:
+                config = yaml.safe_load(f) or {}
+
+        overrides = {"train": {}, "data": {}}
+        if _is_provided("training_log_folder"):
+            overrides["train"]["training_log_folder"] = training_log_folder
+        if _is_provided("batch_size"):
+            overrides["train"]["batch_size"] = batch_size
+        if _is_provided("epochs"):
+            overrides["train"]["epochs"] = epochs
+        if _is_provided("learning_rate"):
+            overrides["train"]["learning_rate"] = learning_rate
+        if _is_provided("patience"):
+            overrides["train"]["patience"] = patience
+        if _is_provided("data_folder"):
+            overrides["data"]["data_folder"] = data_folder
+        if _is_provided("data_version"):
+            overrides["data"]["version"] = data_version
+        if _is_provided("generate"):
+            overrides["data"]["generate"] = generate
+        if _is_provided("window_size"):
+            overrides["data"]["window_size"] = window_size
+        if _is_provided("step"):
+            overrides["data"]["step"] = step
+        if _is_provided("verbose"):
+            overrides["data"]["verbose"] = verbose
+
+        config = _merge_config(config, overrides)
+        trainer = Trainer(config=config)
+        trainer()
+
+    cli()

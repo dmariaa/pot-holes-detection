@@ -6,6 +6,10 @@ Use the CLI tools from the repository root. Each tool has its own help page:
 ```powershell
 python -m potholes.loader --help
 ```
+- Trainer: `cli/trainer.md`
+```powershell
+python -m potholes.detection.trainer --help
+```
 - Plotter: `cli/plotter.md`
 ```powershell
 python -m potholes.tootls.plot --help

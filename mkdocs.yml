@@ -41,6 +41,7 @@ nav:
   - CLI usage:
     - Overview: cli.md
     - Loader tool: cli/loader.md
+    - Trainer tool: cli/trainer.md
     - Plotter tool: cli/plotter.md
     - Video tool: cli/video.md
   - API Reference:
