@@ -1,6 +1,4 @@
 import os
-import pathlib
-from datetime import datetime
 
 import click
 import numpy as np
@@ -219,7 +217,7 @@ class Trainer:
 
         config['test_mode'] = True
 
-        dataset = get_dataset(config=config.get('data'))
+        dataset = get_dataset(config=config)
         split = np.load(split_file)
         test_idx = split['test_idx']
 
@@ -290,9 +288,12 @@ class Trainer:
         )
 
         fig.show()
+        fig.write_image(os.path.join(model_path, 'confusion_matrix.png'))
 
 if __name__=="__main__":
     import click
+    import pathlib
+    from datetime import datetime
     from click.core import ParameterSource
 
     @click.group()
