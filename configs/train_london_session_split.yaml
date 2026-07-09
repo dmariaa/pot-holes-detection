@@ -34,3 +34,5 @@ wandb:
   log_training_artifact: true
   log_model_artifact: true
   log_dataset_artifact: false
+  log_batch_metrics: true
+  log_batch_interval: 25

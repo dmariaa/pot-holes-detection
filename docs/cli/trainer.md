@@ -72,9 +72,15 @@ wandb:
   log_training_artifact: true
   log_model_artifact: true
   log_dataset_artifact: false
+  log_batch_metrics: true
+  log_batch_interval: 25
 ```
 
 Logged metrics:
+- `train/batch_loss`
+- `train/batch_acc`
+- `train/running_loss`
+- `train/running_acc`
 - `train/loss`
 - `train/acc`
 - `val/loss`
@@ -83,6 +89,9 @@ Logged metrics:
 - `lr`
 - `best/val_loss`
 - `best/val_auc`
+
+Batch metrics are logged every `log_batch_interval` optimizer steps when
+`log_batch_metrics` is enabled. Validation metrics are logged once per epoch.
 
 Logged artifacts:
 - split artifact: `config.yaml`, `data_split.npz`, `split_summary.yaml`

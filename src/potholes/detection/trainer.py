@@ -98,6 +98,7 @@ class Trainer:
         self.split_path = os.path.join(self.output_path, "data_split.npz")
         self.split_summary_path = os.path.join(self.output_path, "split_summary.yaml")
         self.train_log_path = os.path.join(self.output_path, "train_log.npz")
+        self.global_step = 0
 
         if not self.test_mode:
             # Save configuration in output folder
@@ -213,6 +214,9 @@ class Trainer:
         running_loss = 0.0
         total_train = 0
         train_correct = 0
+        wandb_config = self.config.get("wandb") or {}
+        log_batch_metrics = self.wandb_run is not None and wandb_config.get("log_batch_metrics", True)
+        log_batch_interval = max(1, int(wandb_config.get("log_batch_interval", 25)))
 
         with tqdm(total=len(self.train_loader), position=1, leave=False) as self.batch_pbar:
             self.batch_pbar.set_description("Training")
@@ -229,8 +233,28 @@ class Trainer:
 
                 preds = logits.argmax(dim=1)
                 total_train += labels.size(0)
-                train_correct += (preds==labels).sum().item()
+                batch_correct = (preds == labels).sum().item()
+                train_correct += batch_correct
                 running_loss += loss.item() * images.size(0)
+                batch_acc = batch_correct / labels.size(0)
+                running_avg_loss = running_loss / total_train
+                running_avg_acc = train_correct / total_train
+                self.global_step += 1
+
+                should_log_batch = log_batch_metrics and (
+                    self.global_step == 1
+                    or self.global_step % log_batch_interval == 0
+                    or i == len(self.train_loader) - 1
+                )
+                if should_log_batch:
+                    self.wandb_run.log({
+                        "epoch": self.epoch,
+                        "train/batch_loss": loss.item(),
+                        "train/batch_acc": batch_acc,
+                        "train/running_loss": running_avg_loss,
+                        "train/running_acc": running_avg_acc,
+                        "lr": self.scheduler.get_last_lr()[0],
+                    }, step=self.global_step)
 
                 self.batch_pbar.set_postfix(loss=loss.item())
                 self.batch_pbar.update(1)
@@ -329,7 +353,7 @@ class Trainer:
                             "lr": self.scheduler.get_last_lr()[0],
                             "best/val_loss": best_val_loss,
                             "best/val_auc": best_val_auc,
-                        }, step=self.epoch)
+                        }, step=self.global_step)
 
                     if patience_counter > self.config.get('patience'):
                         click.echo(f"Early stopping after {self.config.get('patience')} epochs with no improvement.")
