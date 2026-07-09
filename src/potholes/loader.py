@@ -12,7 +12,14 @@ import yaml
 
 from potholes.tools.generator import generate_samples as generate_samples_func
 from potholes.tools.gps_tools import plot_route
-from potholes.tools.session import load_session, find_sessions, delete_session, get_session_stats
+from potholes.tools.session import (
+    load_session,
+    find_sessions,
+    delete_session,
+    get_session_stats,
+    format_duration_hms,
+    format_number,
+)
 
 
 def json_default(o):
@@ -61,28 +68,30 @@ class SessionsParam(click.ParamType):
 
 def print_sessions_header():
     click.echo(
-        f"{' ':<60} {'Speed':>7}"
+        f"{' ':<79} {'Speed':>7}"
         "\n"
-        f"{'#':<3} {'Date':<10} {'Time':<8} {'Sensor':<19} {'Frames':<8} {'PotHole':>7} {'Bump':>7} {'ManHole':>7} {'Other':>7} {'Total time'}"
+        f"{'#':<3} {'Folder':<18} {'Date':<10} {'Time':<8} {'Sensor':<19} {'Frames':<8} {'PotHole':>7} {'Bump':>7} {'ManHole':>7} {'Other':>7} {'Total time'}"
     )
-    click.echo("-" * 120)
+    click.echo("-" * 139)
 
 
 def print_session_row(session: dict, index: int):
     dt = session["session_start_time"]
     stats = session["stats"]
     labels = stats['labels']
+    folder_name = Path(session["session_path"]).name
     click.echo(
         f"{index:<3} "
+        f"{folder_name:<18} "
         f"{dt.date()} "
         f"{dt.time()} "
         f"{session['sensor_name']:<19} "
-        f"{stats['frames']:>8} "
-        f"{labels.get('pothole', 0):>7} "
-        f"{labels.get('speed_bump', 0):>7} "
-        f"{labels.get('manhole', 0):>7} "
-        f"{labels.get('other', 0):>7} "
-        f"{humanfriendly.format_timespan(stats['time'])} "
+        f"{format_number(stats['frames']):>8} "
+        f"{format_number(labels.get('pothole', 0)):>7} "
+        f"{format_number(labels.get('speed_bump', 0)):>7} "
+        f"{format_number(labels.get('manhole', 0)):>7} "
+        f"{format_number(labels.get('other', 0)):>7} "
+        f"{format_duration_hms(stats['time'])} "
     )
 
 

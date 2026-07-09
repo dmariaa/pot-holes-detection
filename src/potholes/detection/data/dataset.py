@@ -62,6 +62,7 @@ class PotholesDataset(Dataset):
                 data = np.load(data_file, allow_pickle=True)
                 sample = data['sample']
                 metadata = json.loads(str(data['meta']))
+                metadata.setdefault("session_id", data_file.parent.name)
                 self._data_.append((sample, metadata))
                 pbar.update(1)
 
@@ -80,6 +81,7 @@ class PotholesDataset(Dataset):
             with tqdm(total=total_samples, disable=not self.config.get('verbose', True)) as pbar:
                 pbar.set_description(desc=f"Generating data samples for session {session_file.name}")
                 for sample, meta in iterator:
+                    meta.setdefault("session_id", session_file.parent.name)
                     self._data_.append((sample, meta))
                     pbar.update(1)
 
@@ -178,6 +180,72 @@ def stratified_split_indices(dataset: Dataset, val_ratio: float, test_ratio: flo
         train_indices.extend(indices[:n_train].tolist())
         val_indices.extend(indices[n_train:n_train + n_val].tolist())
         test_indices.extend(indices[n_train + n_val:].tolist())
+
+    if shuffle:
+        rng.shuffle(train_indices)
+        rng.shuffle(val_indices)
+        rng.shuffle(test_indices)
+
+    return [train_indices, val_indices, test_indices]
+
+
+def _get_sample_metadata(dataset: Dataset, index: int) -> dict:
+    if hasattr(dataset, "_data_"):
+        return dataset._data_[index][1]
+
+    _, metadata = dataset[index]
+    return metadata
+
+
+def session_split_indices(
+        dataset: Dataset,
+        *,
+        val_sessions: list[str],
+        test_sessions: list[str],
+        shuffle: bool = True,
+        seed: int | None = None,
+) -> list[list[int]]:
+    val_session_set = set(val_sessions)
+    test_session_set = set(test_sessions)
+    overlap = val_session_set & test_session_set
+    if overlap:
+        raise ValueError(f"Sessions cannot be in both validation and test splits: {sorted(overlap)}")
+
+    rng = np.random.default_rng(seed)
+    train_indices: list[int] = []
+    val_indices: list[int] = []
+    test_indices: list[int] = []
+    seen_sessions: set[str] = set()
+
+    for i in range(len(dataset)):
+        metadata = _get_sample_metadata(dataset, i)
+        session_id = metadata.get("session_id")
+        if session_id is None:
+            raise ValueError("Dataset sample metadata is missing 'session_id'")
+
+        seen_sessions.add(session_id)
+        if session_id in val_session_set:
+            val_indices.append(i)
+        elif session_id in test_session_set:
+            test_indices.append(i)
+        else:
+            train_indices.append(i)
+
+    unknown_val_sessions = val_session_set - seen_sessions
+    unknown_test_sessions = test_session_set - seen_sessions
+    if unknown_val_sessions or unknown_test_sessions:
+        raise ValueError(
+            "Unknown split sessions. "
+            f"Validation: {sorted(unknown_val_sessions)}. "
+            f"Test: {sorted(unknown_test_sessions)}."
+        )
+
+    if len(val_indices) == 0:
+        raise ValueError("Validation split is empty")
+    if len(test_indices) == 0:
+        raise ValueError("Test split is empty")
+    if len(train_indices) == 0:
+        raise ValueError("Train split is empty")
 
     if shuffle:
         rng.shuffle(train_indices)

@@ -28,11 +28,11 @@ Options:
 Example:
 ```shell-session
 $ uv run -m potholes.loader list data/Data_YYYYMMDD
-                                                             Speed
-#   Date       Time     Sensor               Frames    PotHole   Bump ManHole   Other Total time
-------------------------------------------------------------------------------------------------------------------------
-1   2026-01-08 16:18:34 PhoneA               60000          12      3       1       0 00:20:00
-2   2026-01-08 17:05:12 PhoneB               45000           2      0       0       1 00:15:00
+                                                                                  Speed
+#   Folder             Date       Time     Sensor              Frames   PotHole    Bump ManHole   Other Total time
+-------------------------------------------------------------------------------------------------------------------------------------------
+1   Data_YYYYMMDD      2026-01-08 16:18:34 PhoneA              60,000      12       3       1       0 0:20:00
+2   Data_YYYYMMDD      2026-01-08 17:05:12 PhoneB              45,000       2       0       0       1 0:15:00
 ```
 
 ### Session statistics
@@ -169,10 +169,10 @@ Options:
 Example:
 ```shell-session
 $ uv run -m potholes.loader delete data/Data_YYYYMMDD 1
-                                                             Speed
-    Date       Time     Sensor               Frames    PotHole   Bump ManHole   Other Total time
-------------------------------------------------------------------------------------------------------------------------
-1   2026-01-08 16:18:34 PhoneA               60000          12      3       1       0 00:20:00
+                                                                                  Speed
+#   Folder             Date       Time     Sensor              Frames   PotHole    Bump ManHole   Other Total time
+-------------------------------------------------------------------------------------------------------------------------------------------
+1   Data_YYYYMMDD      2026-01-08 16:18:34 PhoneA              60,000      12       3       1       0 0:20:00
 
 Are you sure you want to delete this session? [y/N]: y
 

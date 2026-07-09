@@ -1,4 +1,5 @@
 import os
+from collections import Counter
 
 import click
 import numpy as np
@@ -12,8 +13,13 @@ from tqdm import tqdm
 import plotly.graph_objects as go
 
 from potholes.detection.data import get_dataset
-from potholes.detection.data.dataset import labels_to_id, stratified_split_indices, RoadLabel
+from potholes.detection.data.dataset import labels_to_id, stratified_split_indices, session_split_indices, RoadLabel
 from potholes.detection.models.transformer import load_model
+
+try:
+    import wandb
+except ImportError:
+    wandb = None
 
 
 def collate_fn(batch):
@@ -23,28 +29,155 @@ def collate_fn(batch):
     return samples, torch.tensor(labels, dtype=torch.long)
 
 
+def build_split_indices(dataset, config: dict) -> tuple[list[int], list[int], list[int]]:
+    split_config = config.get("split") or {}
+    split_strategy = split_config.get("strategy", "stratified")
+    if split_strategy == "session":
+        return session_split_indices(
+            dataset,
+            val_sessions=split_config.get("val_sessions", []),
+            test_sessions=split_config.get("test_sessions", []),
+            shuffle=split_config.get("shuffle", False),
+            seed=split_config.get("seed"),
+        )
+    if split_strategy == "stratified":
+        return stratified_split_indices(
+            dataset,
+            val_ratio=split_config.get("val_ratio", 0.2),
+            test_ratio=split_config.get("test_ratio", 0.2),
+            shuffle=split_config.get("shuffle", False),
+        )
+
+    raise ValueError(f"Unknown split strategy: {split_strategy}")
+
+
+def metadata_at(dataset, idx: int) -> dict:
+    if hasattr(dataset, "_data_"):
+        return dataset._data_[idx][1]
+
+    _, metadata = dataset[idx]
+    return metadata
+
+
+def split_distribution(dataset, indices: list[int] | np.ndarray) -> dict:
+    labels = Counter()
+    sessions = Counter()
+
+    for idx in indices:
+        metadata = metadata_at(dataset, int(idx))
+        labels[labels_to_id(metadata.get("labels", [])).label] += 1
+        sessions[metadata.get("session_id", "unknown")] += 1
+
+    return {
+        "size": len(indices),
+        "labels": dict(sorted(labels.items())),
+        "sessions": dict(sorted(sessions.items())),
+    }
+
+
+def build_split_summary(dataset, train_idx: list[int], val_idx: list[int], test_idx: list[int]) -> dict:
+    return {
+        "dataset_size": len(dataset),
+        "splits": {
+            "train": split_distribution(dataset, train_idx),
+            "val": split_distribution(dataset, val_idx),
+            "test": split_distribution(dataset, test_idx),
+        },
+    }
+
+
 class Trainer:
     def __init__(self, config: dict):
         self.config = config
         self.test_mode = self.config.get('test_mode', False)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.output_path = self.config.get('training_log_folder')
+        self.wandb_run = None
+        self.best_model_path = os.path.join(self.output_path, "best_model.pth")
+        self.config_path = os.path.join(self.output_path, "config.yaml")
+        self.split_path = os.path.join(self.output_path, "data_split.npz")
+        self.split_summary_path = os.path.join(self.output_path, "split_summary.yaml")
+        self.train_log_path = os.path.join(self.output_path, "train_log.npz")
 
         if not self.test_mode:
             # Save configuration in output folder
             os.makedirs(self.output_path, exist_ok=True)
-            with open(os.path.join(self.output_path, 'config.yaml'), 'w') as f:
+            with open(self.config_path, 'w') as f:
                 f.write(yaml.safe_dump(config))
+
+    def __prepare_wandb__(self):
+        wandb_config = self.config.get("wandb") or {}
+        if not wandb_config.get("enabled", False):
+            return
+
+        if wandb is None:
+            raise ImportError("wandb is enabled but not installed. Run: uv add wandb")
+
+        self.wandb_run = wandb.init(
+            project=wandb_config.get("project", "potholes-detection"),
+            entity=wandb_config.get("entity"),
+            name=wandb_config.get("name"),
+            tags=wandb_config.get("tags"),
+            group=wandb_config.get("group"),
+            mode=wandb_config.get("mode", "online"),
+            dir=wandb_config.get("dir", self.output_path),
+            job_type=wandb_config.get("job_type", "train"),
+            config=self.config,
+            save_code=wandb_config.get("save_code", True),
+        )
+
+    def __log_wandb_artifact__(self, name: str, artifact_type: str, files: list[str], aliases: list[str] | None = None):
+        if self.wandb_run is None:
+            return
+
+        artifact = wandb.Artifact(name=name, type=artifact_type)
+        for file_path in files:
+            if os.path.exists(file_path):
+                artifact.add_file(file_path)
+
+        self.wandb_run.log_artifact(artifact, aliases=aliases)
+
+    def __log_wandb_data__(self):
+        if self.wandb_run is None:
+            return
+
+        wandb_config = self.config.get("wandb") or {}
+        self.wandb_run.summary["dataset_size"] = self.split_summary["dataset_size"]
+        for split_name, split in self.split_summary["splits"].items():
+            self.wandb_run.summary[f"{split_name}_size"] = split["size"]
+            for label, count in split["labels"].items():
+                self.wandb_run.summary[f"{split_name}_{label}_count"] = count
+
+        if wandb_config.get("log_split_artifact", True):
+            self.__log_wandb_artifact__(
+                name=wandb_config.get("split_artifact_name", "potholes-session-split"),
+                artifact_type="data-split",
+                files=[self.config_path, self.split_path, self.split_summary_path],
+                aliases=["latest"],
+            )
+
+        if wandb_config.get("log_dataset_artifact", False):
+            artifact = wandb.Artifact(
+                name=wandb_config.get("dataset_artifact_name", "potholes-dataset"),
+                type="dataset",
+            )
+            artifact.add_dir(self.config.get("data", {}).get("data_folder", "dataset"))
+            self.wandb_run.log_artifact(artifact, aliases=["latest"])
 
     def __prepare_data__(self):
         dataset = get_dataset(config=self.config.get('data'))
 
-        train_idx, val_idx, test_idx = stratified_split_indices(dataset, val_ratio=0.2, test_ratio=0.2, shuffle=False)
+        train_idx, val_idx, test_idx = build_split_indices(dataset, self.config)
 
         print(f"Dataset size: {len(dataset)}")
         print(f"Train/val/test sizes: {len(train_idx)}, {len(val_idx)}, {len(test_idx)}")
-        np.savez_compressed(os.path.join(self.output_path, 'data_split.npz'),
-                            train_idx=train_idx, val_idx=val_idx, test_idx=test_idx)
+        np.savez_compressed(self.split_path, train_idx=train_idx, val_idx=val_idx, test_idx=test_idx)
+
+        self.split_summary = build_split_summary(dataset, train_idx, val_idx, test_idx)
+        with open(self.split_summary_path, "w") as f:
+            yaml.safe_dump(self.split_summary, f, sort_keys=False)
+
+        self.__log_wandb_data__()
 
         self.train_dataset = Subset(dataset, train_idx)
         self.val_dataset = Subset(dataset, val_idx)
@@ -69,6 +202,11 @@ class Trainer:
         optimizer_params = [p for p in self.model.parameters() if p.requires_grad]
         self.optimizer = optim.Adam(optimizer_params, lr=self.config.get('learning_rate'))
         self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.config.get('epochs'))
+        if self.wandb_run is not None:
+            total_params = sum(p.numel() for p in self.model.parameters())
+            trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+            self.wandb_run.summary["total_params"] = total_params
+            self.wandb_run.summary["trainable_params"] = trainable_params
 
     def __train__(self):
         self.model.train()
@@ -147,53 +285,89 @@ class Trainer:
         return log
 
     def __call__(self, *args, **kwargs):
-        self.__prepare_data__()
-        self.__prepare_model__()
-        self.__prepare_loss__()
-        self.__prepare_optimizers__()
+        try:
+            self.__prepare_wandb__()
+            self.__prepare_data__()
+            self.__prepare_model__()
+            self.__prepare_loss__()
+            self.__prepare_optimizers__()
 
-        epochs = self.config.get('epochs')
-        train_log_history = []
-        val_log_history = []
+            epochs = self.config.get('epochs')
+            train_log_history = []
+            val_log_history = []
 
-        patience_counter = 0
-        best_val_loss = float("inf")
-        best_val_auc = 0.0
+            patience_counter = 0
+            best_val_loss = float("inf")
+            best_val_auc = 0.0
 
-        with tqdm(total=epochs, position=0, leave=True) as self.epochs_pbar:
-            self.epochs_pbar.set_description("Epochs")
-            for self.epoch in range(epochs):
-                train_log = self.__train__()
-                train_log_history.append(train_log)
+            with tqdm(total=epochs, position=0, leave=True) as self.epochs_pbar:
+                self.epochs_pbar.set_description("Epochs")
+                for self.epoch in range(epochs):
+                    train_log = self.__train__()
+                    train_log_history.append(train_log)
 
-                val_log = self.__validate__()
-                val_log_history.append(val_log)
+                    val_log = self.__validate__()
+                    val_log_history.append(val_log)
 
-                improved = (val_log.get('val_loss') < best_val_loss) or (val_log.get('val_auc') > best_val_auc)
-                if improved:
-                    best_val_loss = min(val_log.get('val_loss'), best_val_loss)
-                    best_val_auc = max(val_log.get('val_auc'), best_val_auc)
-                    patience_counter = 0
-                    torch.save(self.model.state_dict(), os.path.join(self.output_path, f"best_model.pth"))
-                else:
-                    patience_counter += 1
+                    improved = (val_log.get('val_loss') < best_val_loss) or (val_log.get('val_auc') > best_val_auc)
+                    if improved:
+                        best_val_loss = min(val_log.get('val_loss'), best_val_loss)
+                        best_val_auc = max(val_log.get('val_auc'), best_val_auc)
+                        patience_counter = 0
+                        torch.save(self.model.state_dict(), self.best_model_path)
+                    else:
+                        patience_counter += 1
 
-                if patience_counter > self.config.get('patience'):
-                    click.echo(f"Early stopping after {self.config.get('patience')} epochs with no improvement.")
-                    break
+                    if self.wandb_run is not None:
+                        self.wandb_run.log({
+                            "epoch": self.epoch,
+                            "train/loss": train_log.get("train_loss"),
+                            "train/acc": train_log.get("train_acc"),
+                            "val/loss": val_log.get("val_loss"),
+                            "val/acc": val_log.get("val_acc"),
+                            "val/auc": val_log.get("val_auc"),
+                            "lr": self.scheduler.get_last_lr()[0],
+                            "best/val_loss": best_val_loss,
+                            "best/val_auc": best_val_auc,
+                        }, step=self.epoch)
 
-                self.scheduler.step()
+                    if patience_counter > self.config.get('patience'):
+                        click.echo(f"Early stopping after {self.config.get('patience')} epochs with no improvement.")
+                        break
 
-                self.epochs_pbar.set_postfix(train_loss=train_log.get('train_loss'),
-                                             train_acc=train_log.get('train_acc'),
-                                             val_loss=val_log.get('val_loss'),
-                                             val_acc=val_log.get('val_acc'),
-                                             val_auc=val_log.get('val_auc'))
-                self.epochs_pbar.update(1)
+                    self.scheduler.step()
 
-        np.savez_compressed(os.path.join(self.output_path, 'train_log.npz'),
-                            train_log_history=train_log_history,
-                            val_log_history=val_log_history)
+                    self.epochs_pbar.set_postfix(train_loss=train_log.get('train_loss'),
+                                                 train_acc=train_log.get('train_acc'),
+                                                 val_loss=val_log.get('val_loss'),
+                                                 val_acc=val_log.get('val_acc'),
+                                                 val_auc=val_log.get('val_auc'))
+                    self.epochs_pbar.update(1)
+
+            np.savez_compressed(self.train_log_path,
+                                train_log_history=train_log_history,
+                                val_log_history=val_log_history)
+
+            wandb_config = self.config.get("wandb") or {}
+            if wandb_config.get("log_training_artifact", True):
+                self.__log_wandb_artifact__(
+                    name=wandb_config.get("training_artifact_name", "potholes-training-log"),
+                    artifact_type="training-log",
+                    files=[self.config_path, self.split_path, self.split_summary_path, self.train_log_path],
+                    aliases=["latest"],
+                )
+
+            if wandb_config.get("log_model_artifact", True):
+                if os.path.exists(self.best_model_path):
+                    self.__log_wandb_artifact__(
+                        name=wandb_config.get("model_artifact_name", "potholes-ast-classifier"),
+                        artifact_type="model",
+                        files=[self.best_model_path, self.config_path, self.split_path, self.split_summary_path],
+                        aliases=["best"],
+                    )
+        finally:
+            if self.wandb_run is not None:
+                self.wandb_run.finish()
 
 
     @staticmethod
@@ -217,7 +391,7 @@ class Trainer:
 
         config['test_mode'] = True
 
-        dataset = get_dataset(config=config)
+        dataset = get_dataset(config=config.get("data", config))
         split = np.load(split_file)
         test_idx = split['test_idx']
 
@@ -436,5 +610,39 @@ if __name__=="__main__":
         config = _merge_config(config, overrides)
         trainer = Trainer(config=config)
         trainer()
+
+    def _print_split_summary(dataset, train_idx: list[int], val_idx: list[int], test_idx: list[int]):
+        summary = build_split_summary(dataset, train_idx, val_idx, test_idx)
+        click.echo(f"Dataset size: {summary['dataset_size']}")
+        click.echo(f"Train/val/test sizes: {len(train_idx)}, {len(val_idx)}, {len(test_idx)}")
+
+        for name, split in summary["splits"].items():
+            click.echo(f"{name} labels: {split['labels']}")
+            click.echo(f"{name} sessions: {split['sessions']}")
+
+    @cli.command(name="split")
+    @click.argument(
+        "config_file",
+        type=click.Path(exists=True, dir_okay=False, file_okay=True, readable=True),
+    )
+    @click.option(
+        "--output-file",
+        type=click.Path(dir_okay=False, file_okay=True, path_type=pathlib.Path),
+        default=pathlib.Path("output/splits/data_split.npz"),
+        show_default=True,
+        help="Where to save train_idx, val_idx, and test_idx.",
+    )
+    def split_dataset(config_file: str, output_file: pathlib.Path):
+        with open(config_file, "r") as f:
+            config = yaml.safe_load(f) or {}
+
+        config = _merge_config(config, {"train": {}, "data": {}})
+        dataset = get_dataset(config=config.get("data"))
+        train_idx, val_idx, test_idx = build_split_indices(dataset, config)
+
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(output_file, train_idx=train_idx, val_idx=val_idx, test_idx=test_idx)
+        _print_split_summary(dataset, train_idx, val_idx, test_idx)
+        click.echo(f"Saved split to {output_file}")
 
     cli()

@@ -9,6 +9,21 @@ import yaml
 from potholes.tools.load_tools import load_data_file, merge_data, resample_data, merge_labels, load_labels_file
 
 
+def format_duration_hms(duration) -> str:
+    total_seconds = int(round(duration.total_seconds()))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours}:{minutes:02d}:{seconds:02d}"
+
+
+def format_number(value) -> str:
+    if isinstance(value, int):
+        return f"{value:,}"
+    if isinstance(value, float):
+        return f"{value:,.2f}"
+    return str(value)
+
+
 def get_session_stats(session: dict):
     accel_data = load_data_file(session["accel_file"], silent=True)
     labels_data = load_labels_file(session["labels_file"])

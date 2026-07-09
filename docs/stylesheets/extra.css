@@ -4,6 +4,55 @@
     margin: 0 0 1rem 1rem;
 }
 
+.md-grid {
+    max-width: 88rem;
+}
+
+.md-typeset table:not([class]) {
+    font-size: 0.68rem;
+}
+
+.md-typeset table:not([class]) th:first-child,
+.md-typeset table:not([class]) td:first-child {
+    width: 1%;
+    min-width: 2rem;
+    white-space: nowrap;
+    text-align: right;
+}
+
+.md-typeset table:not([class]) th:nth-child(3),
+.md-typeset table:not([class]) td:nth-child(3),
+.md-typeset table:not([class]) th:nth-child(5),
+.md-typeset table:not([class]) td:nth-child(5) {
+    white-space: nowrap;
+}
+
+.md-typeset table:not([class]) th:nth-child(6),
+.md-typeset table:not([class]) td:nth-child(6),
+.md-typeset table:not([class]) th:nth-child(7),
+.md-typeset table:not([class]) td:nth-child(7),
+.md-typeset table:not([class]) th:nth-child(8),
+.md-typeset table:not([class]) td:nth-child(8),
+.md-typeset table:not([class]) th:nth-child(9),
+.md-typeset table:not([class]) td:nth-child(9),
+.md-typeset table:not([class]) th:nth-child(10),
+.md-typeset table:not([class]) td:nth-child(10) {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.md-typeset table:not([class]) th:nth-child(7),
+.md-typeset table:not([class]) td:nth-child(7),
+.md-typeset table:not([class]) th:nth-child(8),
+.md-typeset table:not([class]) td:nth-child(8),
+.md-typeset table:not([class]) th:nth-child(9),
+.md-typeset table:not([class]) td:nth-child(9),
+.md-typeset table:not([class]) th:nth-child(10),
+.md-typeset table:not([class]) td:nth-child(10) {
+    width: 1%;
+    min-width: 3rem;
+}
+
 @media(max-width: 900px) {
     .float-right {
         float: none;

@@ -1,0 +1,36 @@
+training_log_folder: output/training/london-session-split
+batch_size: 8
+epochs: 100
+learning_rate: 0.005
+patience: 10
+
+data:
+  version: 2
+  data_folder: dataset
+  generate: false
+  window_size: 20
+  step: 1
+  verbose: true
+
+split:
+  strategy: session
+  shuffle: false
+  val_sessions:
+    - session_STBPRO1@824C26_20260211_094115
+  test_sessions:
+    - session_STBPRO3@71E957_20260211_094114
+
+wandb:
+  enabled: true
+  project: potholes-detection
+  entity:
+  mode: online
+  name: london-session-split-baseline
+  tags:
+    - baseline
+    - ast
+    - session-split
+  log_split_artifact: true
+  log_training_artifact: true
+  log_model_artifact: true
+  log_dataset_artifact: false

@@ -1,6 +1,8 @@
 site_name: Potholes detection library
 repo_url: https://github.com/yourname/yourrepo
 docs_dir: docs
+not_in_nav: |
+  sessions/*/Data_*.md
 
 theme:
   name: material
@@ -38,6 +40,10 @@ nav:
       - Overview: data-layout.md
       - Session files: data/session-files.md
       - Generated files: data/generated-files.md
+  - Sessions:
+      - Overview: sessions/index.md
+      - London: sessions/london/index.md
+      - Madrid: sessions/madrid/index.md
   - CLI usage:
     - Overview: cli.md
     - Loader tool: cli/loader.md

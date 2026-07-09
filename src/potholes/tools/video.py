@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any, List, Iterable
 
 import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -261,7 +262,14 @@ def extract_label_seconds(df: pd.DataFrame) -> list[tuple[float, str]]:
     out: list[tuple[float, str]] = []
     for item in labels_data.to_dict(orient="records"):
         lbl = item["label"]
-        t_dt = datetime.fromisoformat(item["timestamp_label"])
+        timestamp_label = item["timestamp_label"]
+        if pd.isna(timestamp_label):
+            continue
+
+        t_dt = pd.to_datetime(timestamp_label)
+        if pd.isna(t_dt):
+            continue
+
         t0 = (t_dt - start_dt).total_seconds()
         out.append((t0, lbl))
 
