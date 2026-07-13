@@ -4,6 +4,10 @@ epochs: 100
 learning_rate: 0.005
 patience: 10
 
+model:
+  channels:
+    - z_accel
+
 data:
   version: 2
   data_folder: dataset
@@ -29,10 +33,10 @@ split:
 
 wandb:
   enabled: true
-  project: potholes-detection
+  project: pothole-detection
   entity:
-  mode: online
-  name: london-session-split-baseline
+  mode: offline
+  name:
   tags:
     - baseline
     - ast

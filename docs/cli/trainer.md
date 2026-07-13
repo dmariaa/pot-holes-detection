@@ -46,6 +46,57 @@ Example with defaults:
 $ uv run -m potholes.detection.trainer train --use-defaults --epochs 20 --batch-size 16
 ```
 
+### Model channels
+
+Samples are stored with six channels:
+
+| Index | Name |
+| --- | --- |
+| 0 | `x_accel` |
+| 1 | `y_accel` |
+| 2 | `z_accel` |
+| 3 | `x_gyro` |
+| 4 | `y_gyro` |
+| 5 | `z_gyro` |
+
+The AST wrapper selects the configured channels and averages only that subset
+before feeding AST. This lets channel experiments reuse the same generated
+dataset.
+
+Default behavior:
+```yaml
+model:
+  channels:
+    - all
+```
+
+Single-channel example:
+```yaml
+model:
+  channels:
+    - z_accel
+```
+
+Accelerometer-only example:
+```yaml
+model:
+  channels:
+    - x_accel
+    - y_accel
+    - z_accel
+```
+
+Gyroscope-only example:
+```yaml
+model:
+  channels:
+    - x_gyro
+    - y_gyro
+    - z_gyro
+```
+
+Integer indices are also accepted, but names are preferred for readability.
+
 ### Weights & Biases logging
 
 The trainer can log metrics and artifacts to Weights & Biases when a `wandb`

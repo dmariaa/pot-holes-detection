@@ -195,7 +195,9 @@ class Trainer:
                 collate_fn=collate_fn)
 
     def __prepare_model__(self):
-        self.model = load_model().to(self.device)
+        self.model = load_model(self.config.get("model")).to(self.device)
+        if self.wandb_run is not None and hasattr(self.model, "channel_names"):
+            self.wandb_run.summary["model_channels"] = self.model.channel_names
 
     def __prepare_loss__(self):
         self.criterion = nn.CrossEntropyLoss().to(self.device)
@@ -425,7 +427,7 @@ class Trainer:
                                       shuffle=False, drop_last=False, collate_fn=collate_fn)
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model = load_model().to(device)
+        model = load_model(config.get("model")).to(device)
         model.load_state_dict(torch.load(model_file, map_location=device))
         model.eval()
 
