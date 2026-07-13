@@ -123,6 +123,24 @@ Example:
 $ uv run python -m potholes.detection.trainer split configs/train_london_session_split.yaml --output-file output/splits/london_session_split.npz
 ```
 
+Session splits can explicitly list all three splits:
+```yaml
+split:
+  strategy: session
+  shuffle: false
+  train_sessions:
+    - session_STBPRO1@824C26_20260210_122839
+    - session_STBPRO1@824C26_20260210_141443
+  val_sessions:
+    - session_STBPRO1@824C26_20260211_094115
+  test_sessions:
+    - session_STBPRO3@71E957_20260211_094114
+```
+
+If `train_sessions` is omitted, every session not listed in `val_sessions` or
+`test_sessions` is used for training. If `train_sessions` is present, sessions
+not listed in any split are ignored.
+
 ### Test a model
 
 Evaluates a trained model from a training output folder.

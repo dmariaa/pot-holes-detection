@@ -35,6 +35,7 @@ def build_split_indices(dataset, config: dict) -> tuple[list[int], list[int], li
     if split_strategy == "session":
         return session_split_indices(
             dataset,
+            train_sessions=split_config.get("train_sessions"),
             val_sessions=split_config.get("val_sessions", []),
             test_sessions=split_config.get("test_sessions", []),
             shuffle=split_config.get("shuffle", False),

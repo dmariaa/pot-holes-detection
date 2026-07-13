@@ -200,16 +200,30 @@ def _get_sample_metadata(dataset: Dataset, index: int) -> dict:
 def session_split_indices(
         dataset: Dataset,
         *,
+        train_sessions: list[str] | None = None,
         val_sessions: list[str],
         test_sessions: list[str],
         shuffle: bool = True,
         seed: int | None = None,
 ) -> list[list[int]]:
+    train_session_set = set(train_sessions) if train_sessions is not None else None
     val_session_set = set(val_sessions)
     test_session_set = set(test_sessions)
-    overlap = val_session_set & test_session_set
-    if overlap:
-        raise ValueError(f"Sessions cannot be in both validation and test splits: {sorted(overlap)}")
+
+    split_sets = {
+        "train": train_session_set or set(),
+        "validation": val_session_set,
+        "test": test_session_set,
+    }
+    overlaps = []
+    split_names = list(split_sets)
+    for i, left_name in enumerate(split_names):
+        for right_name in split_names[i + 1:]:
+            overlap = split_sets[left_name] & split_sets[right_name]
+            if overlap:
+                overlaps.append(f"{left_name}/{right_name}: {sorted(overlap)}")
+    if overlaps:
+        raise ValueError(f"Sessions cannot be assigned to multiple splits: {'; '.join(overlaps)}")
 
     rng = np.random.default_rng(seed)
     train_indices: list[int] = []
@@ -228,14 +242,18 @@ def session_split_indices(
             val_indices.append(i)
         elif session_id in test_session_set:
             test_indices.append(i)
-        else:
+        elif train_session_set is None or session_id in train_session_set:
             train_indices.append(i)
+        else:
+            continue
 
+    unknown_train_sessions = (train_session_set or set()) - seen_sessions
     unknown_val_sessions = val_session_set - seen_sessions
     unknown_test_sessions = test_session_set - seen_sessions
-    if unknown_val_sessions or unknown_test_sessions:
+    if unknown_train_sessions or unknown_val_sessions or unknown_test_sessions:
         raise ValueError(
             "Unknown split sessions. "
+            f"Train: {sorted(unknown_train_sessions)}. "
             f"Validation: {sorted(unknown_val_sessions)}. "
             f"Test: {sorted(unknown_test_sessions)}."
         )

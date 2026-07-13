@@ -15,6 +15,13 @@ data:
 split:
   strategy: session
   shuffle: false
+  train_sessions:
+    - session_STBPRO1@824C26_20260210_122839
+    - session_STBPRO1@824C26_20260210_141443
+    - session_STBPRO1@824C26_20260210_151550
+    - session_STBPRO3@71E957_20260210_122725
+    - session_STBPRO3@71E957_20260210_141443
+    - session_STBPRO3@71E957_20260210_151552
   val_sessions:
     - session_STBPRO1@824C26_20260211_094115
   test_sessions:
