@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 from potholes.detection.data import get_dataset
 from potholes.detection.data.dataset import labels_to_id, stratified_split_indices, session_split_indices, RoadLabel
-from potholes.detection.models.transformer import load_model
+from potholes.detection.models import load_model
 
 try:
     import wandb

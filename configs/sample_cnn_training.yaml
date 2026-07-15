@@ -5,9 +5,9 @@ learning_rate: 0.005
 patience: 10
 
 model:
-  architecture: ast
+  architecture: cnn
   channels:
-    - z_accel
+    - all
   embedding_dim: 256
   base_channels: 32
   dropout: 0.2
@@ -38,9 +38,9 @@ split:
 wandb:
   enabled: true
   project: pothole-detection
-  entity:
-  mode: offline
-  name:
+  entity: potholes-team
+  mode: online
+  name: sample-cnn-all
   tags:
     - baseline
     - ast

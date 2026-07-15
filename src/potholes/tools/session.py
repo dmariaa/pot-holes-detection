@@ -76,8 +76,16 @@ def get_session_stats(session: dict):
     }
 
 
+def _metadata_file_sort_key(path: str, data_folder: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    relative_parts = Path(os.path.relpath(path, data_folder)).parts
+    return tuple(part.casefold() for part in relative_parts), relative_parts
+
+
 def find_sessions(data_folder: str):
-    metadata_files = glob.glob(os.path.join(data_folder, "**/metadata*.yaml"), recursive=True)
+    metadata_files = sorted(
+        glob.glob(os.path.join(data_folder, "**/metadata*.yaml"), recursive=True),
+        key=lambda path: _metadata_file_sort_key(path, data_folder),
+    )
     sessions = []
     for metadata_file in metadata_files:
         metadata: dict = yaml.safe_load(open(metadata_file))

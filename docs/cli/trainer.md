@@ -97,6 +97,32 @@ model:
 
 Integer indices are also accepted, but names are preferred for readability.
 
+### Model architecture
+
+The default model architecture is AST:
+```yaml
+model:
+  architecture: ast
+  channels:
+    - all
+```
+
+A custom CNN spectrogram encoder is also available:
+```yaml
+model:
+  architecture: cnn
+  channels:
+    - all
+  embedding_dim: 256
+  base_channels: 32
+  dropout: 0.2
+```
+
+The CNN encoder consumes the selected channels directly as input channels,
+passes them through 2D convolution blocks, and produces an embedding before the
+classifier head. It exposes an `encode(...)` method so the same encoder can be
+reused later for contrastive pretraining.
+
 ### Weights & Biases logging
 
 The trainer can log metrics and artifacts to Weights & Biases when a `wandb`
