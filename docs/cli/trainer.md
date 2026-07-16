@@ -10,40 +10,24 @@ python -m potholes.detection.trainer --help
 
 ### Train a model
 
-Trains a transformer model from a config file or from built-in defaults.
+Trains a transformer model from a config file.
 
 Usage:
 ```shell-session
 $ uv run -m potholes.detection.trainer train --help
 
-Usage: python -m potholes.detection.trainer train [OPTIONS] [CONFIG_FILE]
+Usage: python -m potholes.detection.trainer train [OPTIONS] CONFIG_FILE
 
 Options:
-  --use-defaults                  Allow running without a config file using
-                                  built-in defaults.
   --training-log-folder DIRECTORY
-                                  [default: (auto)]
-  --batch-size INTEGER            [default: 8]
-  --epochs INTEGER                [default: 100]
-  --learning-rate FLOAT           [default: 0.005]
-  --patience INTEGER              [default: 10]
-  --data-folder DIRECTORY         [default: dataset]
-  --data-version INTEGER RANGE    [default: 2; 1<=x<=2]
-  --generate / --no-generate      [default: no-generate]
-  --window-size INTEGER           [default: 10]
-  --step INTEGER                  [default: 1]
-  --verbose / --no-verbose        [default: verbose]
+                                  Base folder where run output folders are
+                                  created.  [default: output/training]
   --help                          Show this message and exit.
 ```
 
 Example with a config file:
 ```shell-session
 $ uv run -m potholes.detection.trainer train configs/train.yaml
-```
-
-Example with defaults:
-```shell-session
-$ uv run -m potholes.detection.trainer train --use-defaults --epochs 20 --batch-size 16
 ```
 
 ### Model channels
@@ -123,6 +107,14 @@ passes them through 2D convolution blocks, and produces an embedding before the
 classifier head. It exposes an `encode(...)` method so the same encoder can be
 reused later for contrastive pretraining.
 
+### Dataset generation
+
+The `data.generate` config setting controls how training samples are loaded.
+When `false`, the dataset loads existing generated `.npz` sample files from
+`data.data_folder`. When `true`, it reads raw `session_*.csv` files from that
+folder and generates spectrogram samples in memory using `data.window_size` and
+`data.step`.
+
 ### Weights & Biases logging
 
 The trainer can log metrics and artifacts to Weights & Biases when a `wandb`
@@ -135,12 +127,13 @@ $ uv run wandb login
 
 Example config:
 ```yaml
+run_name: london-session-split-baseline
+
 wandb:
   enabled: true
   project: potholes-detection
   entity:
   mode: online
-  name: london-session-split-baseline
   tags:
     - baseline
     - ast
@@ -169,6 +162,13 @@ Logged metrics:
 
 Batch metrics are logged every `log_batch_interval` optimizer steps when
 `log_batch_metrics` is enabled. Validation metrics are logged once per epoch.
+
+Run identity is controlled by the top-level `run_name`. The trainer writes
+outputs to `<training-log-folder>/<run_name>`, uses the same value as the W&B
+run name, and labels artifacts as `<run_name>-split`,
+`<run_name>-training-log`, `<run_name>-model`, and `<run_name>-dataset` when
+dataset artifact logging is enabled. The `--training-log-folder` CLI option is
+only the base folder and is not part of the training config.
 
 Logged artifacts:
 - split artifact: `config.yaml`, `data_split.npz`, `split_summary.yaml`

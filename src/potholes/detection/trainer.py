@@ -1,5 +1,4 @@
 import os
-from collections import Counter
 
 import click
 import numpy as np
@@ -12,8 +11,10 @@ from tqdm import tqdm
 
 import plotly.graph_objects as go
 
+from potholes.detection.config import normalize_run_config, prepare_config, run_artifact_name, run_output_path
 from potholes.detection.data import get_dataset
-from potholes.detection.data.dataset import labels_to_id, stratified_split_indices, session_split_indices, RoadLabel
+from potholes.detection.data.dataset import labels_to_id, RoadLabel
+from potholes.detection.data.split import build_split_indices, build_split_summary
 from potholes.detection.models import load_model
 
 try:
@@ -29,70 +30,12 @@ def collate_fn(batch):
     return samples, torch.tensor(labels, dtype=torch.long)
 
 
-def build_split_indices(dataset, config: dict) -> tuple[list[int], list[int], list[int]]:
-    split_config = config.get("split") or {}
-    split_strategy = split_config.get("strategy", "stratified")
-    if split_strategy == "session":
-        return session_split_indices(
-            dataset,
-            train_sessions=split_config.get("train_sessions"),
-            val_sessions=split_config.get("val_sessions", []),
-            test_sessions=split_config.get("test_sessions", []),
-            shuffle=split_config.get("shuffle", False),
-            seed=split_config.get("seed"),
-        )
-    if split_strategy == "stratified":
-        return stratified_split_indices(
-            dataset,
-            val_ratio=split_config.get("val_ratio", 0.2),
-            test_ratio=split_config.get("test_ratio", 0.2),
-            shuffle=split_config.get("shuffle", False),
-        )
-
-    raise ValueError(f"Unknown split strategy: {split_strategy}")
-
-
-def metadata_at(dataset, idx: int) -> dict:
-    if hasattr(dataset, "_data_"):
-        return dataset._data_[idx][1]
-
-    _, metadata = dataset[idx]
-    return metadata
-
-
-def split_distribution(dataset, indices: list[int] | np.ndarray) -> dict:
-    labels = Counter()
-    sessions = Counter()
-
-    for idx in indices:
-        metadata = metadata_at(dataset, int(idx))
-        labels[labels_to_id(metadata.get("labels", [])).label] += 1
-        sessions[metadata.get("session_id", "unknown")] += 1
-
-    return {
-        "size": len(indices),
-        "labels": dict(sorted(labels.items())),
-        "sessions": dict(sorted(sessions.items())),
-    }
-
-
-def build_split_summary(dataset, train_idx: list[int], val_idx: list[int], test_idx: list[int]) -> dict:
-    return {
-        "dataset_size": len(dataset),
-        "splits": {
-            "train": split_distribution(dataset, train_idx),
-            "val": split_distribution(dataset, val_idx),
-            "test": split_distribution(dataset, test_idx),
-        },
-    }
-
-
 class Trainer:
-    def __init__(self, config: dict):
-        self.config = config
+    def __init__(self, config: dict, training_log_base_folder: str = os.path.join("output", "training")):
+        self.config = normalize_run_config(config)
         self.test_mode = self.config.get('test_mode', False)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.output_path = self.config.get('training_log_folder')
+        self.output_path = run_output_path(training_log_base_folder, self.config["run_name"])
         self.wandb_run = None
         self.best_model_path = os.path.join(self.output_path, "best_model.pth")
         self.config_path = os.path.join(self.output_path, "config.yaml")
@@ -105,7 +48,7 @@ class Trainer:
             # Save configuration in output folder
             os.makedirs(self.output_path, exist_ok=True)
             with open(self.config_path, 'w') as f:
-                f.write(yaml.safe_dump(config))
+                f.write(yaml.safe_dump(self.config))
 
     def __prepare_wandb__(self):
         wandb_config = self.config.get("wandb") or {}
@@ -122,7 +65,7 @@ class Trainer:
             tags=wandb_config.get("tags"),
             group=wandb_config.get("group"),
             mode=wandb_config.get("mode", "online"),
-            dir=wandb_config.get("dir", self.output_path),
+            dir=self.output_path,
             job_type=wandb_config.get("job_type", "train"),
             config=self.config,
             save_code=wandb_config.get("save_code", True),
@@ -152,7 +95,7 @@ class Trainer:
 
         if wandb_config.get("log_split_artifact", True):
             self.__log_wandb_artifact__(
-                name=wandb_config.get("split_artifact_name", "potholes-session-split"),
+                name=run_artifact_name(self.config["run_name"], "split"),
                 artifact_type="data-split",
                 files=[self.config_path, self.split_path, self.split_summary_path],
                 aliases=["latest"],
@@ -160,7 +103,7 @@ class Trainer:
 
         if wandb_config.get("log_dataset_artifact", False):
             artifact = wandb.Artifact(
-                name=wandb_config.get("dataset_artifact_name", "potholes-dataset"),
+                name=run_artifact_name(self.config["run_name"], "dataset"),
                 type="dataset",
             )
             artifact.add_dir(self.config.get("data", {}).get("data_folder", "dataset"))
@@ -378,7 +321,7 @@ class Trainer:
             wandb_config = self.config.get("wandb") or {}
             if wandb_config.get("log_training_artifact", True):
                 self.__log_wandb_artifact__(
-                    name=wandb_config.get("training_artifact_name", "potholes-training-log"),
+                    name=run_artifact_name(self.config["run_name"], "training-log"),
                     artifact_type="training-log",
                     files=[self.config_path, self.split_path, self.split_summary_path, self.train_log_path],
                     aliases=["latest"],
@@ -387,7 +330,7 @@ class Trainer:
             if wandb_config.get("log_model_artifact", True):
                 if os.path.exists(self.best_model_path):
                     self.__log_wandb_artifact__(
-                        name=wandb_config.get("model_artifact_name", "potholes-ast-classifier"),
+                        name=run_artifact_name(self.config["run_name"], "model"),
                         artifact_type="model",
                         files=[self.best_model_path, self.config_path, self.split_path, self.split_summary_path],
                         aliases=["best"],
@@ -494,8 +437,6 @@ class Trainer:
 if __name__=="__main__":
     import click
     import pathlib
-    from datetime import datetime
-    from click.core import ParameterSource
 
     @click.group()
     def cli():
@@ -508,134 +449,28 @@ if __name__=="__main__":
         Trainer.test(str(model_path))
 
 
-    def _default_training_log_folder() -> str:
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        return os.path.join("output", "training", f"training-{timestamp}")
-
-    def _merge_config(base_config: dict, overrides: dict) -> dict:
-        config = dict(base_config or {})
-        data_config = dict(config.get("data") or {})
-        config["data"] = data_config
-
-        train_defaults = {
-            "batch_size": 8,
-            "epochs": 100,
-            "learning_rate": 0.005,
-            "patience": 10,
-        }
-        data_defaults = {
-            "version": 2,
-            "data_folder": "dataset",
-            "generate": False,
-            "step": 1,
-            "verbose": True,
-            "window_size": 10,
-        }
-
-        for key, value in train_defaults.items():
-            if config.get(key) is None:
-                config[key] = value
-
-        for key, value in data_defaults.items():
-            if data_config.get(key) is None:
-                data_config[key] = value
-
-        for key, value in overrides.get("train", {}).items():
-            if value is not None:
-                config[key] = value
-
-        for key, value in overrides.get("data", {}).items():
-            if value is not None:
-                data_config[key] = value
-
-        if not config.get("training_log_folder"):
-            config["training_log_folder"] = _default_training_log_folder()
-
-        return config
-
     @cli.command()
     @click.argument(
         "config_file",
-        required=False,
+        required=True,
         type=click.Path(exists=True, dir_okay=False, file_okay=True, readable=True),
     )
     @click.option(
-        "--use-defaults",
-        is_flag=True,
-        default=False,
-        help="Allow running without a config file using built-in defaults.",
+        "--training-log-folder",
+        type=click.Path(dir_okay=True, file_okay=False),
+        default=os.path.join("output", "training"),
         show_default=True,
+        help="Base folder where run output folders are created.",
     )
-    @click.option("--training-log-folder", type=click.Path(dir_okay=True, file_okay=False), default=None, show_default="auto")
-    @click.option("--batch-size", type=int, default=8, show_default=True)
-    @click.option("--epochs", type=int, default=100, show_default=True)
-    @click.option("--learning-rate", type=float, default=0.005, show_default=True)
-    @click.option("--patience", type=int, default=10, show_default=True)
-    @click.option("--data-folder", type=click.Path(exists=True, dir_okay=True, file_okay=False, readable=True), default="dataset", show_default=True)
-    @click.option("--data-version", type=click.IntRange(1, 2), default=2, show_default=True)
-    @click.option("--generate/--no-generate", default=False, show_default=True)
-    @click.option("--window-size", type=int, default=10, show_default=True)
-    @click.option("--step", type=int, default=1, show_default=True)
-    @click.option("--verbose/--no-verbose", default=True, show_default=True)
     def train(
         config_file: str,
-        use_defaults: bool,
         training_log_folder: str,
-        batch_size: int,
-        epochs: int,
-        learning_rate: float,
-        patience: int,
-        data_folder: str,
-        data_version: int,
-        generate: bool,
-        window_size: int,
-        step: int,
-        verbose: bool,
     ):
-        ctx = click.get_current_context()
+        with open(config_file, "r") as f:
+            config = yaml.safe_load(f) or {}
 
-        def _is_provided(param_name: str) -> bool:
-            return ctx.get_parameter_source(param_name) != ParameterSource.DEFAULT
-
-        if config_file is None and not use_defaults:
-
-            click.echo(
-                click.style("\nError: Provide CONFIG_FILE or pass --use-defaults to run with built-in defaults.",
-                           fg="red", bold=True), err=True, nl=True, color=True)
-            click.echo(ctx.get_help())
-            ctx.exit(2)
-
-        config = {}
-        if config_file:
-            with open(config_file, "r") as f:
-                config = yaml.safe_load(f) or {}
-
-        overrides = {"train": {}, "data": {}}
-        if _is_provided("training_log_folder"):
-            overrides["train"]["training_log_folder"] = training_log_folder
-        if _is_provided("batch_size"):
-            overrides["train"]["batch_size"] = batch_size
-        if _is_provided("epochs"):
-            overrides["train"]["epochs"] = epochs
-        if _is_provided("learning_rate"):
-            overrides["train"]["learning_rate"] = learning_rate
-        if _is_provided("patience"):
-            overrides["train"]["patience"] = patience
-        if _is_provided("data_folder"):
-            overrides["data"]["data_folder"] = data_folder
-        if _is_provided("data_version"):
-            overrides["data"]["version"] = data_version
-        if _is_provided("generate"):
-            overrides["data"]["generate"] = generate
-        if _is_provided("window_size"):
-            overrides["data"]["window_size"] = window_size
-        if _is_provided("step"):
-            overrides["data"]["step"] = step
-        if _is_provided("verbose"):
-            overrides["data"]["verbose"] = verbose
-
-        config = _merge_config(config, overrides)
-        trainer = Trainer(config=config)
+        config = prepare_config(config)
+        trainer = Trainer(config=config, training_log_base_folder=training_log_folder)
         trainer()
 
     def _print_split_summary(dataset, train_idx: list[int], val_idx: list[int], test_idx: list[int]):
@@ -663,7 +498,7 @@ if __name__=="__main__":
         with open(config_file, "r") as f:
             config = yaml.safe_load(f) or {}
 
-        config = _merge_config(config, {"train": {}, "data": {}})
+        config = prepare_config(config)
         dataset = get_dataset(config=config.get("data"))
         train_idx, val_idx, test_idx = build_split_indices(dataset, config)
 

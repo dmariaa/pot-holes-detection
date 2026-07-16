@@ -1,4 +1,4 @@
-training_log_folder: output/training/london-session-split
+run_name: sample-cnn-all
 batch_size: 8
 epochs: 100
 learning_rate: 0.005
@@ -40,7 +40,6 @@ wandb:
   project: pothole-detection
   entity: potholes-team
   mode: online
-  name: sample-cnn-all
   tags:
     - baseline
     - ast
