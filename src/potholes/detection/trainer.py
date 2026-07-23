@@ -4,18 +4,17 @@ import click
 import numpy as np
 import torch
 import yaml
-from sklearn.metrics import roc_auc_score, confusion_matrix
+from sklearn.metrics import roc_auc_score
 from torch import nn, optim
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
-import plotly.graph_objects as go
-
 from potholes.detection.config import normalize_run_config, prepare_config, run_artifact_name, run_output_path
 from potholes.detection.data import get_dataset
-from potholes.detection.data.dataset import labels_to_id, RoadLabel
+from potholes.detection.data.dataset import labels_to_id
 from potholes.detection.data.split import build_split_indices, build_split_summary
 from potholes.detection.models import load_model
+from potholes.detection.plots import confusion_matrix_figure, write_confusion_matrix_image
 
 try:
     import wandb
@@ -42,6 +41,7 @@ class Trainer:
         self.split_path = os.path.join(self.output_path, "data_split.npz")
         self.split_summary_path = os.path.join(self.output_path, "split_summary.yaml")
         self.train_log_path = os.path.join(self.output_path, "train_log.npz")
+        self.confusion_matrix_folder = os.path.join(self.output_path, "confusion_matrices")
         self.global_step = 0
 
         if not self.test_mode:
@@ -141,6 +141,10 @@ class Trainer:
         self.model = load_model(self.config.get("model")).to(self.device)
         if self.wandb_run is not None and hasattr(self.model, "channel_names"):
             self.wandb_run.summary["model_channels"] = self.model.channel_names
+        if self.wandb_run is not None and hasattr(self.model, "freeze_encoder"):
+            self.wandb_run.summary["freeze_encoder"] = self.model.freeze_encoder
+        if self.wandb_run is not None and getattr(self.model, "encoder_checkpoint", None):
+            self.wandb_run.summary["encoder_checkpoint"] = self.model.encoder_checkpoint
 
     def __prepare_loss__(self):
         self.criterion = nn.CrossEntropyLoss().to(self.device)
@@ -219,6 +223,7 @@ class Trainer:
         val_correct = 0
         all_probs = []
         all_labels = []
+        all_preds = []
 
         with torch.no_grad():
             with tqdm(total=len(self.val_loader), position=1, leave=False) as self.batch_pbar:
@@ -236,6 +241,7 @@ class Trainer:
                     all_labels.append(labels.detach().cpu())
 
                     preds = logits.argmax(dim=1)
+                    all_preds.append(preds.detach().cpu())
                     total_val += labels.size(0)
                     val_correct += (preds == labels).sum().item()
 
@@ -244,12 +250,18 @@ class Trainer:
 
         probs_np = torch.cat(all_probs, dim=0).numpy()
         labels_np = torch.cat(all_labels, dim=0).numpy()
+        preds_np = torch.cat(all_preds, dim=0).numpy()
         auc = roc_auc_score(labels_np, probs_np, multi_class='ovr', average='macro')
 
         log = {
             'val_loss': running_val_loss / len(self.val_dataset),
             'val_acc': val_correct / total_val,
-            'val_auc': auc
+            'val_auc': auc,
+            'confusion_matrix': confusion_matrix_figure(
+                labels_np,
+                preds_np,
+                title=f"Validation Confusion Matrix - Epoch {self.epoch}",
+            ),
         }
 
         return log
@@ -277,6 +289,7 @@ class Trainer:
                     train_log_history.append(train_log)
 
                     val_log = self.__validate__()
+                    confusion_matrix_plot = val_log.pop("confusion_matrix", None)
                     val_log_history.append(val_log)
 
                     improved = (val_log.get('val_loss') < best_val_loss) or (val_log.get('val_auc') > best_val_auc)
@@ -289,7 +302,7 @@ class Trainer:
                         patience_counter += 1
 
                     if self.wandb_run is not None:
-                        self.wandb_run.log({
+                        wandb_log = {
                             "epoch": self.epoch,
                             "train/loss": train_log.get("train_loss"),
                             "train/acc": train_log.get("train_acc"),
@@ -299,7 +312,20 @@ class Trainer:
                             "lr": self.scheduler.get_last_lr()[0],
                             "best/val_loss": best_val_loss,
                             "best/val_auc": best_val_auc,
-                        }, step=self.global_step)
+                        }
+                        if confusion_matrix_plot is not None:
+                            wandb_log["val/confusion_matrix"] = wandb.Plotly(confusion_matrix_plot)
+
+                        self.wandb_run.log(wandb_log, step=self.global_step)
+
+                    if confusion_matrix_plot is not None:
+                        os.makedirs(self.confusion_matrix_folder, exist_ok=True)
+                        confusion_matrix_plot.write_image(
+                            os.path.join(
+                                self.confusion_matrix_folder,
+                                f"val_epoch_{self.epoch:04d}.png",
+                            )
+                        )
 
                     if patience_counter > self.config.get('patience'):
                         click.echo(f"Early stopping after {self.config.get('patience')} epochs with no improvement.")
@@ -409,30 +435,12 @@ class Trainer:
         print(f"Test Accuracy: {accuracy:.2f}%")
         print(f"Test AUC (macro-ovr): {auc:.4f}")
 
-        labels = [l.label for l in RoadLabel]
-        cm = confusion_matrix(labels_np, preds_np)
-        cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True)
-
-        fig = go.Figure(
-            data=go.Heatmap(
-                z=cm_norm,
-                x=labels,
-                y=labels,
-                colorscale="Blues",
-                text=np.round(cm_norm, 2),
-                texttemplate="%{text}",
-                hovertemplate="True: %{y}<br>Pred: %{x}<br>Value: %{z:.3f}<extra></extra>"
-            )
+        fig = write_confusion_matrix_image(
+            labels_np,
+            preds_np,
+            os.path.join(model_path, 'confusion_matrix.png'),
         )
-
-        fig.update_layout(
-            title="Normalized Confusion Matrix",
-            xaxis_title="Predicted Label",
-            yaxis_title="True Label"
-        )
-
         fig.show()
-        fig.write_image(os.path.join(model_path, 'confusion_matrix.png'))
 
 if __name__=="__main__":
     import click

@@ -1,7 +1,7 @@
-run_name: cnn-all-baseline-new
+run_name: cnn-contrastive-finetune
 batch_size: 8
 epochs: 100
-learning_rate: 0.005
+learning_rate: 0.0005
 patience: 10
 
 model:
@@ -11,6 +11,8 @@ model:
   embedding_dim: 256
   base_channels: 32
   dropout: 0.2
+  encoder_checkpoint: output/contrastive/london-contrastive-cnn/encoder.pth
+  freeze_encoder: false
 
 data:
   version: 2
@@ -41,8 +43,9 @@ wandb:
   entity: potholes-team
   mode: online
   tags:
-    - baseline
-    - ast
+    - contrastive-transfer
+    - cnn
+    - finetune-encoder
     - session-split
   log_split_artifact: true
   log_training_artifact: true

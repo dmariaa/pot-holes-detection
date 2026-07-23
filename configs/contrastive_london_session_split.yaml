@@ -1,8 +1,7 @@
-run_name: cnn-all-baseline-new
-batch_size: 8
+run_name: london-contrastive-cnn
 epochs: 100
-learning_rate: 0.005
-patience: 10
+learning_rate: 0.001
+patience: 30
 
 model:
   architecture: cnn
@@ -11,6 +10,21 @@ model:
   embedding_dim: 256
   base_channels: 32
   dropout: 0.2
+  projection_hidden_dim: 256
+  projection_dim: 128
+
+contrastive:
+  classes_per_batch: 4
+  samples_per_class: 4
+  val_batches: 100
+  temperature: 0.1
+  seed: 42
+#  augmentations:
+#    amplitude_scale: 0.1
+#    noise_std: 0.02
+#    channel_dropout: 0.1
+#    freq_mask_fraction: 0.1
+#    time_mask_fraction: 0.1
 
 data:
   version: 2
@@ -37,16 +51,13 @@ split:
 
 wandb:
   enabled: true
-  project: pothole-detection
+  project: contrastive-pretraining
   entity: potholes-team
   mode: online
   tags:
-    - baseline
-    - ast
+    - contrastive
+    - cnn
     - session-split
   log_split_artifact: true
-  log_training_artifact: true
   log_model_artifact: true
-  log_dataset_artifact: false
-  log_batch_metrics: true
   log_batch_interval: 25

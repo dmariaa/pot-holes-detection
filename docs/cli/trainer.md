@@ -107,6 +107,102 @@ passes them through 2D convolution blocks, and produces an embedding before the
 classifier head. It exposes an `encode(...)` method so the same encoder can be
 reused later for contrastive pretraining.
 
+### Contrastive pretraining
+
+The supervised classifier trainer remains in `potholes.detection.trainer`.
+Supervised contrastive encoder pretraining uses a separate CLI:
+
+```shell-session
+$ uv run python -m potholes.detection.contrastive_trainer train configs/contrastive_london_session_split.yaml
+```
+
+The contrastive pretrainer uses:
+- the configured train sessions only for optimization
+- a balanced label sampler with `classes_per_batch * samples_per_class`
+- two augmented views per training sample
+- supervised contrastive loss, where same-label samples are positives
+- validation contrastive loss on the configured validation sessions
+
+Example contrastive config:
+```yaml
+run_name: london-contrastive-cnn
+epochs: 100
+learning_rate: 0.001
+patience: 10
+
+model:
+  architecture: cnn
+  channels:
+    - all
+  embedding_dim: 256
+  base_channels: 32
+  dropout: 0.2
+  projection_hidden_dim: 256
+  projection_dim: 128
+
+contrastive:
+  classes_per_batch: 4
+  samples_per_class: 4
+  temperature: 0.1
+  augmentations:
+    amplitude_scale: 0.1
+    noise_std: 0.02
+    channel_dropout: 0.1
+    freq_mask_fraction: 0.1
+    time_mask_fraction: 0.1
+```
+
+The pretrainer writes:
+- `contrastive_model.pth`: encoder plus projection head
+- `encoder.pth`: encoder-only weights for later classifier fine-tuning
+- `contrastive_log.npz`
+- `config.yaml`, `data_split.npz`, and `split_summary.yaml`
+
+### Contrastive transfer
+
+After contrastive pretraining, train a supervised classifier from the saved
+encoder checkpoint.
+
+Frozen encoder / linear probe:
+```yaml
+model:
+  architecture: cnn
+  channels:
+    - all
+  embedding_dim: 256
+  base_channels: 32
+  dropout: 0.2
+  encoder_checkpoint: output/contrastive/london-contrastive-cnn/encoder.pth
+  freeze_encoder: true
+```
+
+Run:
+```shell-session
+$ uv run python -m potholes.detection.trainer train configs/cnn_contrastive_frozen.yaml
+```
+
+Fine-tuned encoder:
+```yaml
+model:
+  architecture: cnn
+  channels:
+    - all
+  embedding_dim: 256
+  base_channels: 32
+  dropout: 0.2
+  encoder_checkpoint: output/contrastive/london-contrastive-cnn/encoder.pth
+  freeze_encoder: false
+```
+
+Run:
+```shell-session
+$ uv run python -m potholes.detection.trainer train configs/cnn_contrastive_finetune.yaml
+```
+
+When `freeze_encoder` is true, encoder parameters are excluded from the
+optimizer and the encoder is kept in eval mode so BatchNorm statistics are not
+updated during classifier-head training.
+
 ### Dataset generation
 
 The `data.generate` config setting controls how training samples are loaded.
@@ -156,12 +252,16 @@ Logged metrics:
 - `val/loss`
 - `val/acc`
 - `val/auc`
+- `val/confusion_matrix`
 - `lr`
 - `best/val_loss`
 - `best/val_auc`
 
 Batch metrics are logged every `log_batch_interval` optimizer steps when
-`log_batch_metrics` is enabled. Validation metrics are logged once per epoch.
+`log_batch_metrics` is enabled. Validation metrics and the validation confusion
+matrix are logged once per epoch. The confusion matrix is logged as a Plotly
+media chart and the same figure is saved locally as
+`confusion_matrices/val_epoch_<epoch>.png` under the run output folder.
 
 Run identity is controlled by the top-level `run_name`. The trainer writes
 outputs to `<training-log-folder>/<run_name>`, uses the same value as the W&B

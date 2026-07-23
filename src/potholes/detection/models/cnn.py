@@ -73,8 +73,10 @@ class SpectrogramCNNClassifier(nn.Module):
             embedding_dim: int = 256,
             base_channels: int = 32,
             dropout: float = 0.2,
+            freeze_encoder: bool = False,
     ):
         super().__init__()
+        self.freeze_encoder = freeze_encoder
         self.encoder = SpectrogramCNNEncoder(
             channels=channels,
             embedding_dim=embedding_dim,
@@ -90,9 +92,27 @@ class SpectrogramCNNClassifier(nn.Module):
     def encode(self, pixel_values):
         return self.encoder(pixel_values)
 
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if self.freeze_encoder:
+            self.encoder.eval()
+        return self
+
     def forward(self, pixel_values, **kwargs):
         embeddings = self.encode(pixel_values)
         return self.classifier(embeddings)
+
+
+def _load_encoder_checkpoint(model: SpectrogramCNNClassifier, checkpoint_path: str):
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    state_dict = checkpoint.get("state_dict", checkpoint) if isinstance(checkpoint, dict) else checkpoint
+    model.encoder.load_state_dict(state_dict)
+
+
+def _freeze_encoder(model: SpectrogramCNNClassifier):
+    for param in model.encoder.parameters():
+        param.requires_grad = False
+    model.encoder.eval()
 
 
 def load_cnn_model(model_config: dict | None = None):
@@ -103,7 +123,19 @@ def load_cnn_model(model_config: dict | None = None):
         embedding_dim=model_config.get("embedding_dim", 256),
         base_channels=model_config.get("base_channels", 32),
         dropout=model_config.get("dropout", 0.2),
+        freeze_encoder=model_config.get("freeze_encoder", False),
     )
+
+    encoder_checkpoint = model_config.get("encoder_checkpoint")
+    model.encoder_checkpoint = encoder_checkpoint
+    if encoder_checkpoint:
+        _load_encoder_checkpoint(model, encoder_checkpoint)
+        print(f"Loaded encoder checkpoint: {encoder_checkpoint}")
+
+    if model_config.get("freeze_encoder", False):
+        _freeze_encoder(model)
+        print("Encoder frozen: true")
+
     print("Input channels:", model.channel_names)
     print(f"Embedding dim: {model.encoder.embedding_dim}")
     return model
