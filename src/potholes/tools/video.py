@@ -1,4 +1,6 @@
 from datetime import datetime
+import os
+from pathlib import Path
 from typing import Any, List, Iterable
 
 import matplotlib
@@ -196,9 +198,20 @@ def add_route_axes(session_data: pd.DataFrame, ax_map: plt.Axes):
     # ---- Add basemap tiles underneath ----
     # NOTE: this fetches tiles from the internet unless cached.
     # Add tiles AFTER limits/aspect so it uses the right extent.
+    # Keep downloaded tiles across runs instead of fetching them for every video.
+    cache_root = Path(os.environ.get("LOCALAPPDATA", Path.home() / ".cache"))
+    tile_cache = cache_root / "PotholesDetection" / "map-tiles"
+    tile_cache.mkdir(parents=True, exist_ok=True)
+    cx.set_cache_dir(str(tile_cache))
     cx.add_basemap(
         ax_map,
         source=cx.providers.OpenStreetMap.Mapnik,
+        headers={
+            "User-Agent": os.environ.get(
+                "POTHOLES_MAP_USER_AGENT",
+                "PotholesDetection/0.1 (sensor-session video renderer)",
+            ),
+        },
         crs="EPSG:3857",
         reset_extent=False,
         zorder=0

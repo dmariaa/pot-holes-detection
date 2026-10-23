@@ -46,3 +46,20 @@ $ uv run -m potholes.tools.video output/session_*/session_*.csv -o out/frame -d
 (no stdout; writes out/frame.png)
 ```
 ![Sample plot](../../assets/cli/test_video.png)
+
+### Background maps
+
+Video generation downloads OpenStreetMap tiles for the route extent. Requests identify
+this application as `PotholesDetection/0.1`. Tiles are cached across runs in
+`%LOCALAPPDATA%/PotholesDetection/map-tiles` on Windows (or
+`~/.cache/PotholesDetection/map-tiles` when `LOCALAPPDATA` is unavailable).
+Keep this cache so repeated renders reuse downloaded tiles.
+
+You can include a real contact URL or email in the application identifier by setting
+`POTHOLES_MAP_USER_AGENT` before rendering. Do not impersonate a browser or another
+application. See the [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
+
+If a video contains an “Access blocked” tile, regenerate it after correcting the map
+request configuration. Existing MP4 files cannot update their background automatically.
+An existing server or network block may still require resolution with the provider;
+do not repeatedly retry blocked requests.
