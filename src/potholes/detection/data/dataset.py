@@ -12,7 +12,12 @@ from torchvision import transforms as tr
 from tqdm import tqdm
 from pprint import pprint
 
+from potholes.detection.config import is_config_disabled
 from potholes.tools.generator import generate_samples
+
+
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
 
 
 class ToTensor(object):
@@ -20,9 +25,43 @@ class ToTensor(object):
         return torch.from_numpy(sample).float()
 
 
+def _resize_size(value) -> tuple[int, int] | None:
+    if is_config_disabled(value):
+        return None
+
+    if value is True:
+        return 224, 224
+
+    if isinstance(value, int):
+        return value, value
+
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        return int(value[0]), int(value[1])
+
+    raise ValueError("data.resize must be false, an int, or a two-item [height, width] list")
+
+
+def _build_default_transforms(config: dict) -> list:
+    transform_steps = [ToTensor()]
+
+    resize_size = _resize_size(config["resize"])
+    if resize_size is not None:
+        transform_steps.append(tr.Resize(resize_size))
+
+    if not is_config_disabled(config["normalize"]):
+        transform_steps.append(
+            tr.Normalize(
+                mean=IMAGENET_MEAN * 2,
+                std=IMAGENET_STD * 2,
+            )
+        )
+
+    return transform_steps
+
+
 class PotholesDataset(Dataset):
-    imagenet_mean = [0.485, 0.456, 0.406]
-    imagenet_std = [0.229, 0.224, 0.225]
+    imagenet_mean = IMAGENET_MEAN
+    imagenet_std = IMAGENET_STD
 
     def __init__(self, config: dict, transforms: list = None ):
         self.config = config
@@ -30,21 +69,17 @@ class PotholesDataset(Dataset):
         self.__read_data__()
 
         if transforms is None:
-            transforms = [
-                ToTensor(),
-                tr.Resize((224, 224)),
-                tr.Normalize(mean=PotholesDataset.imagenet_mean * 2, std = PotholesDataset.imagenet_std * 2)
-            ]
+            transforms = _build_default_transforms(self.config)
 
         self.transforms = tr.Compose(transforms)
 
     def __read_data__(self):
-        self.data_folder = self.config.get('data_folder')
+        self.data_folder = self.config["data_folder"]
 
         if not os.path.exists(self.data_folder):
             raise FileNotFoundError(f"Data folder {self.data_folder} not found")
 
-        if self.config.get('generate', False):
+        if self.config["generate"]:
             self.__generate_data__()
         else:
             self.__load_data__()
@@ -56,7 +91,7 @@ class PotholesDataset(Dataset):
 
         self._data_ = []
 
-        with tqdm(total=len(data_files), disable=not self.config.get('verbose', True)) as pbar:
+        with tqdm(total=len(data_files), disable=not self.config["verbose"]) as pbar:
             pbar.set_description(desc="Loading data samples")
             for data_file in data_files:
                 data = np.load(data_file, allow_pickle=True)
@@ -75,10 +110,10 @@ class PotholesDataset(Dataset):
         for session_file in session_files:
             df = pd.read_csv(session_file, parse_dates=['timestamp'])
             total_samples, iterator, spec_params = generate_samples(df,
-                                                                    window_size=self.config.get('window_size'),
-                                                                    step=self.config.get('step'))
+                                                                    window_size=self.config["window_size"],
+                                                                    step=self.config["step"])
 
-            with tqdm(total=total_samples, disable=not self.config.get('verbose', True)) as pbar:
+            with tqdm(total=total_samples, disable=not self.config["verbose"]) as pbar:
                 pbar.set_description(desc=f"Generating data samples for session {session_file.name}")
                 for sample, meta in iterator:
                     meta.setdefault("session_id", session_file.parent.name)
@@ -291,17 +326,20 @@ def print_labels_distribution(dataset: Dataset):
     pprint(labels, sort_dicts=False)
 
 if __name__ == '__main__':
+    from potholes.detection.config import prepare_config
     from potholes.detection.data import get_dataset
 
-    config = {
-        'version': 2,
-        'data_folder': 'dataset',
-        'generate': False,
-        'window_size': 10,
-        'step': 1,
-        'verbose': True,
-        'split_ratio': (0.2, 0.2)   # (validation, test)
-    }
+    config = prepare_config({
+        "data": {
+            'version': 2,
+            'data_folder': 'dataset',
+            'generate': False,
+            'window_size': 10,
+            'step': 1,
+            'verbose': True,
+            'split_ratio': (0.2, 0.2)   # (validation, test)
+        }
+    })["data"]
 
     dataset = get_dataset(config=config)
     print(f"Dataset size: {len(dataset)}")

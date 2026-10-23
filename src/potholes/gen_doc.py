@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 import re
 import shutil
@@ -140,13 +141,26 @@ def resolve_session_video(
 def markdown_table(headers: list[str], rows: list[list[str]]) -> list[str]:
     lines = [
         "| " + " | ".join(headers) + " |",
-        "| " + " | ".join(["---"] * len(headers)) + " |",
+        "| " + " | ".join(
+            "---:" if header in {"#", "Sessions", "Frames", "PotHole", "Bump", "ManHole", "Other", "Total time", "Count", "Value"} else "---"
+            for header in headers
+        ) + " |",
     ]
 
     for row in rows:
         lines.append("| " + " | ".join(markdown_cell(value) for value in row) + " |")
 
     return lines
+
+
+def processed_session_stats(session: dict, sample_rate: int) -> dict:
+    data = load_session(session=session, sample_rate=sample_rate, verbose=False)
+    return {
+        "frames": len(data),
+        "labels": data["label"].value_counts().to_dict(),
+        "time": data["timestamp"].iloc[-1] - data["timestamp"].iloc[0] if len(data) else timedelta(),
+        "sample_rate": sample_rate,
+    }
 
 
 def build_sessions_page(session_folder: Path, sessions: list[dict]) -> str:
@@ -171,14 +185,34 @@ def build_sessions_page(session_folder: Path, sessions: list[dict]) -> str:
         "",
     ]
 
-    rows = []
-    for index, session in enumerate(sessions, 1):
-        link = f"{session_page_slug(session)}.md"
-        rows.append([markdown_link_cell(value, link) for value in session_row(session, index)])
+    for stats_key, title in (("stats", "Raw data"), ("processed_stats", "Processed data")):
+        if stats_key == "processed_stats" and not all("processed_stats" in session for session in sessions):
+            continue
+        table_sessions = [dict(session, stats=session[stats_key]) for session in sessions]
+        lines.extend([f"## {title}", ""])
+        if stats_key == "processed_stats":
+            rates = sorted({session["processed_stats"]["sample_rate"] for session in sessions})
+            lines.extend([f"Resampling rate: {', '.join(str(rate) for rate in rates)} Hz. Frames count processed rows after sensor timestamp deduplication, sensor merging, resampling, and label matching. Label counts include only retained labels; duration spans processed timestamps.", ""])
+        rows = []
+        for index, session in enumerate(table_sessions, 1):
+            link = f"{session_page_slug(session)}.md"
+            rows.append([markdown_link_cell(value, link) for value in session_row(session, index)])
 
-    lines.extend(markdown_table(headers, rows))
+        totals = [
+            "**Total**", "", "", "", "",
+            format_number(sum(session["stats"]["frames"] for session in table_sessions)),
+            *[
+                format_number(sum(session["stats"]["labels"].get(label, 0) for session in table_sessions))
+                for label in ("pothole", "speed_bump", "manhole", "other")
+            ],
+            format_duration_hms(sum((session["stats"]["time"] for session in table_sessions), timedelta())),
+        ]
+        rows.append([f"**{value}**" if value and index >= 5 else value for index, value in enumerate(totals)])
+        lines.extend(markdown_table(headers, rows))
 
-    return "\n".join(lines) + "\n"
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def metric_rows(stats: dict, keys: list[str], unit: str, decimals: int) -> list[list[str]]:
@@ -256,6 +290,23 @@ def build_session_page(session: dict, video_file: Path | None, doc_output_folder
         "",
     ]
 
+    if "processed_stats" in session:
+        processed = session["processed_stats"]
+        processed_lines = [
+            "## Processed data", "",
+            *markdown_table(["Field", "Value"], [
+                ["Resampling rate (Hz)", format_number(processed["sample_rate"])],
+                ["Processed rows", format_number(processed["frames"])],
+                ["Total time", format_duration_hms(processed["time"])],
+            ]), "",
+            *markdown_table(["Label", "Count"], [
+                [label, format_number(processed["labels"].get(label, 0))]
+                for label in ("pothole", "speed_bump", "manhole", "other")
+            ]), "",
+        ]
+        video_heading = lines.index("## Generated Video")
+        lines[video_heading:video_heading] = processed_lines
+
     if video_file is None:
         lines.append("No generated video found for this session.")
     else:
@@ -266,7 +317,7 @@ def build_session_page(session: dict, video_file: Path | None, doc_output_folder
             "</video>",
         ])
 
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def generate_doc(
@@ -282,6 +333,7 @@ def generate_doc(
     doc_output_folder.mkdir(parents=True, exist_ok=True)
 
     for session in sessions:
+        session["processed_stats"] = processed_session_stats(session, sample_rate)
         output_file = doc_output_folder / f"{session_page_slug(session)}.md"
         video_file = resolve_session_video(
             session=session,

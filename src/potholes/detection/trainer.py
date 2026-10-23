@@ -9,7 +9,7 @@ from torch import nn, optim
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
-from potholes.detection.config import normalize_run_config, prepare_config, run_artifact_name, run_output_path
+from potholes.detection.config import prepare_config, run_artifact_name, run_output_path
 from potholes.detection.data import get_dataset
 from potholes.detection.data.dataset import labels_to_id
 from potholes.detection.data.split import build_split_indices, build_split_summary
@@ -31,7 +31,7 @@ def collate_fn(batch):
 
 class Trainer:
     def __init__(self, config: dict, training_log_base_folder: str = os.path.join("output", "training")):
-        self.config = normalize_run_config(config)
+        self.config = config
         self.test_mode = self.config.get('test_mode', False)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.output_path = run_output_path(training_log_base_folder, self.config["run_name"])
@@ -106,11 +106,11 @@ class Trainer:
                 name=run_artifact_name(self.config["run_name"], "dataset"),
                 type="dataset",
             )
-            artifact.add_dir(self.config.get("data", {}).get("data_folder", "dataset"))
+            artifact.add_dir(self.config["data"]["data_folder"])
             self.wandb_run.log_artifact(artifact, aliases=["latest"])
 
     def __prepare_data__(self):
-        dataset = get_dataset(config=self.config.get('data'))
+        dataset = get_dataset(config=self.config["data"])
 
         train_idx, val_idx, test_idx = build_split_indices(dataset, self.config)
 
@@ -507,7 +507,7 @@ if __name__=="__main__":
             config = yaml.safe_load(f) or {}
 
         config = prepare_config(config)
-        dataset = get_dataset(config=config.get("data"))
+        dataset = get_dataset(config=config["data"])
         train_idx, val_idx, test_idx = build_split_indices(dataset, config)
 
         output_file.parent.mkdir(parents=True, exist_ok=True)

@@ -8,7 +8,7 @@ from torch import optim
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
-from potholes.detection.config import normalize_run_config, prepare_config, run_artifact_name, run_output_path
+from potholes.detection.config import prepare_config, run_artifact_name, run_output_path
 from potholes.detection.data import get_dataset
 from potholes.detection.data.dataset import labels_to_id
 from potholes.detection.data.split import build_split_indices, build_split_summary, metadata_at
@@ -95,7 +95,7 @@ def projection_stats(projections: torch.Tensor, labels: torch.Tensor) -> dict:
 
 class ContrastivePretrainer:
     def __init__(self, config: dict, output_base_folder: str = os.path.join("output", "contrastive")):
-        self.config = normalize_run_config(config)
+        self.config = config
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.output_path = run_output_path(output_base_folder, self.config["run_name"])
         self.config_path = os.path.join(self.output_path, "config.yaml")
@@ -141,7 +141,7 @@ class ContrastivePretrainer:
         self.wandb_run.log_artifact(artifact, aliases=aliases)
 
     def __prepare_data__(self):
-        dataset = get_dataset(config=self.config.get("data"))
+        dataset = get_dataset(config=self.config["data"])
         train_idx, val_idx, test_idx = build_split_indices(dataset, self.config)
         np.savez_compressed(self.split_path, train_idx=train_idx, val_idx=val_idx, test_idx=test_idx)
 

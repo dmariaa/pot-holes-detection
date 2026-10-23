@@ -3,7 +3,7 @@ from potholes.detection.data.old_dataset import OldPotholeDataset
 
 
 def get_dataset(*, config: dict):
-    data_version = config.get('version', 2) # if no version, the version is 2
+    data_version = config["version"]
 
     if data_version == 1:
         dataset = OldPotholeDataset(config=config)

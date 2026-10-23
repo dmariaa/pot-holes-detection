@@ -2,8 +2,8 @@ import os
 from datetime import datetime
 
 
-def _is_blank(value) -> bool:
-    return value is None or value == ""
+def is_config_disabled(value) -> bool:
+    return value is False or value is None
 
 
 def _default_run_name() -> str:
@@ -13,7 +13,7 @@ def _default_run_name() -> str:
 
 def _derive_run_name(config: dict) -> str:
     configured_run_name = config.get("run_name")
-    if not _is_blank(configured_run_name):
+    if configured_run_name is not None and configured_run_name != "":
         return str(configured_run_name)
 
     return _default_run_name()
@@ -48,6 +48,8 @@ def prepare_config(base_config: dict) -> dict:
         "version": 2,
         "data_folder": "dataset",
         "generate": False,
+        "normalize": True,
+        "resize": [224, 224],
         "step": 1,
         "verbose": True,
         "window_size": 10,
@@ -58,7 +60,7 @@ def prepare_config(base_config: dict) -> dict:
             config[key] = value
 
     for key, value in data_defaults.items():
-        if data_config.get(key) is None:
+        if key not in data_config:
             data_config[key] = value
 
     return normalize_run_config(config)

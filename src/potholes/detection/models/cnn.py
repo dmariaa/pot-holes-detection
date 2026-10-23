@@ -34,22 +34,28 @@ class SpectrogramCNNEncoder(nn.Module):
             channels: str | int | list[str | int] | None = None,
             embedding_dim: int = 256,
             base_channels: int = 32,
+            num_blocks: int = 4,
             dropout: float = 0.2,
     ):
         super().__init__()
+        num_blocks = int(num_blocks)
+        if num_blocks < 1:
+            raise ValueError("num_blocks must be >= 1")
+
         channel_indices, channel_names = resolve_channel_indices(channels)
         self.channel_names = channel_names
         self.embedding_dim = embedding_dim
+        self.num_blocks = num_blocks
         self.register_buffer("channel_indices", torch.tensor(channel_indices, dtype=torch.long), persistent=False)
 
         in_channels = len(channel_indices)
-        widths = [base_channels, base_channels * 2, base_channels * 4, base_channels * 8]
-        self.features = nn.Sequential(
-            ConvBlock(in_channels, widths[0], dropout),
-            ConvBlock(widths[0], widths[1], dropout),
-            ConvBlock(widths[1], widths[2], dropout),
-            ConvBlock(widths[2], widths[3], dropout),
-        )
+        widths = [base_channels * (2 ** i) for i in range(num_blocks)]
+        blocks = []
+        for out_channels in widths:
+            blocks.append(ConvBlock(in_channels, out_channels, dropout))
+            in_channels = out_channels
+
+        self.features = nn.Sequential(*blocks)
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
         self.embedding = nn.Sequential(
             nn.Flatten(),
@@ -72,6 +78,7 @@ class SpectrogramCNNClassifier(nn.Module):
             num_labels: int = 6,
             embedding_dim: int = 256,
             base_channels: int = 32,
+            num_blocks: int = 4,
             dropout: float = 0.2,
             freeze_encoder: bool = False,
     ):
@@ -81,6 +88,7 @@ class SpectrogramCNNClassifier(nn.Module):
             channels=channels,
             embedding_dim=embedding_dim,
             base_channels=base_channels,
+            num_blocks=num_blocks,
             dropout=dropout,
         )
         self.channel_names = self.encoder.channel_names
@@ -122,6 +130,7 @@ def load_cnn_model(model_config: dict | None = None):
         num_labels=model_config.get("num_labels", 6),
         embedding_dim=model_config.get("embedding_dim", 256),
         base_channels=model_config.get("base_channels", 32),
+        num_blocks=model_config.get("num_blocks", 4),
         dropout=model_config.get("dropout", 0.2),
         freeze_encoder=model_config.get("freeze_encoder", False),
     )
@@ -138,4 +147,5 @@ def load_cnn_model(model_config: dict | None = None):
 
     print("Input channels:", model.channel_names)
     print(f"Embedding dim: {model.encoder.embedding_dim}")
+    print(f"CNN blocks: {model.encoder.num_blocks}")
     return model

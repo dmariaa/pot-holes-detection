@@ -21,7 +21,7 @@ class OldPotholeDataset(PotholesDataset):
         return labels
 
     def __read_data__(self):
-        self.data_folder = Path(self.config.get('data_folder'))
+        self.data_folder = Path(self.config["data_folder"])
         if not self.data_folder.exists():
             raise FileNotFoundError(f"Data folder {self.data_folder} not found")
 
@@ -34,7 +34,7 @@ class OldPotholeDataset(PotholesDataset):
             raise FileNotFoundError(f"No labels file found in {self.data_folder}")
 
         self._data_ = []
-        with tqdm(total=len(data_files), disable=not self.config.get('verbose', True)) as pbar:
+        with tqdm(total=len(data_files), disable=not self.config["verbose"]) as pbar:
             pbar.set_description(desc="Loading data samples")
             for data_file in data_files:
                 data = np.load(data_file)
@@ -48,14 +48,17 @@ class OldPotholeDataset(PotholesDataset):
 
 if __name__ == "__main__":
     from torchvision import transforms as tr
+    from potholes.detection.config import prepare_config
     from potholes.detection.data.dataset import ToTensor
     from potholes.detection.data import get_dataset
 
-    config = {
-        'version': 1,
-        'data_folder': 'data_old',
-        'verbose': True,
-    }
+    config = prepare_config({
+        "data": {
+            'version': 1,
+            'data_folder': 'data_old',
+            'verbose': True,
+        }
+    })["data"]
 
     transforms = tr.Compose([
         ToTensor(),

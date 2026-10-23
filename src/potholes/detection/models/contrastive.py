@@ -48,6 +48,7 @@ def load_contrastive_model(model_config: dict | None = None):
         channels=model_config.get("channels"),
         embedding_dim=embedding_dim,
         base_channels=model_config.get("base_channels", 32),
+        num_blocks=model_config.get("num_blocks", 4),
         dropout=model_config.get("dropout", 0.2),
     )
     model = ContrastiveEncoderModel(
@@ -58,5 +59,6 @@ def load_contrastive_model(model_config: dict | None = None):
     )
     print("Input channels:", model.channel_names)
     print(f"Embedding dim: {embedding_dim}")
+    print(f"CNN blocks: {model.encoder.num_blocks}")
     print(f"Projection dim: {model_config.get('projection_dim', 128)}")
     return model
