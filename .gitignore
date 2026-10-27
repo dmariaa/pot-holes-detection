@@ -301,3 +301,5 @@ http-client.private.env.json
 /data_old/
 /dataset/
 videos
+
+*.bkp

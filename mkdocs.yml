@@ -37,8 +37,9 @@ nav:
   - Home: index.md
   - Getting started: getting-started.md
   - Data layout:
-      - Overview: data-layout.md
+      - Data collection app: data-layout.md
       - Session files: data/session-files.md
+      - Processing pipeline: data/processing-pipeline.md
       - Generated files: data/generated-files.md
   - Sessions:
       - Overview: sessions/index.md
