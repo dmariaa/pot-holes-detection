@@ -45,7 +45,7 @@ $ uv run -m potholes.tools.video output/session_*/session_*.csv -o out/frame -d
 
 (no stdout; writes out/frame.png)
 ```
-![Sample plot](../../assets/cli/test_video.png)
+![Sample plot](../assets/cli/test_video.png)
 
 ### Background maps
 
@@ -63,3 +63,17 @@ If a video contains an “Access blocked” tile, regenerate it after correcting
 request configuration. Existing MP4 files cannot update their background automatically.
 An existing server or network block may still require resolution with the provider;
 do not repeatedly retry blocked requests.
+
+### Session videos in the documentation
+
+Session pages store a stable `session_id`; their Markdown does not depend on local
+video availability. `potholes.tools.video` writes only the requested video.
+`potholes.gen_doc --generate-videos` can generate missing videos while regenerating
+the session documentation, but does not embed players in the Markdown.
+
+Place each session MP4 at `docs/sessions/<collection>/videos/<session_id>.mp4`.
+During `uv run mkdocs build`, the session video hook adds a player only when that
+exact file exists, is nonempty, and is included in the build. This checks availability,
+not MP4 integrity. MkDocs copies the videos into the generated site.
+Rebuild after adding or removing videos and deploy the entire generated site,
+including its videos, together. The session videos remain ignored by Git.

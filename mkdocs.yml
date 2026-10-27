@@ -1,6 +1,8 @@
 site_name: Potholes detection library
 repo_url: https://github.com/yourname/yourrepo
 docs_dir: docs
+hooks:
+  - hooks/session_videos.py
 not_in_nav: |
   sessions/*/Data_*.md
 

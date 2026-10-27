@@ -226,7 +226,7 @@ def metric_rows(stats: dict, keys: list[str], unit: str, decimals: int) -> list[
     return rows
 
 
-def build_session_page(session: dict, video_file: Path | None, doc_output_folder: Path) -> str:
+def build_session_page(session: dict) -> str:
     dt = session["session_start_time"]
     stats = session["stats"]
     labels = stats["labels"]
@@ -252,6 +252,10 @@ def build_session_page(session: dict, video_file: Path | None, doc_output_folder
     ]
 
     lines = [
+        "---",
+        f"session_id: {session_page_slug(session)}",
+        "---",
+        "",
         f"# {folder_name} - {session['session_key']}",
         "",
         "## Summary",
@@ -286,8 +290,6 @@ def build_session_page(session: dict, video_file: Path | None, doc_output_folder
             ),
         ),
         "",
-        "## Generated Video",
-        "",
     ]
 
     if "processed_stats" in session:
@@ -304,18 +306,7 @@ def build_session_page(session: dict, video_file: Path | None, doc_output_folder
                 for label in ("pothole", "speed_bump", "manhole", "other")
             ]), "",
         ]
-        video_heading = lines.index("## Generated Video")
-        lines[video_heading:video_heading] = processed_lines
-
-    if video_file is None:
-        lines.append("No generated video found for this session.")
-    else:
-        video_path = "../" + video_file.relative_to(doc_output_folder).as_posix()
-        lines.extend([
-            f'<video controls width="100%">',
-            f'  <source src="{video_path}" type="video/mp4" />',
-            "</video>",
-        ])
+        lines.extend(processed_lines)
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -335,7 +326,7 @@ def generate_doc(
     for session in sessions:
         session["processed_stats"] = processed_session_stats(session, sample_rate)
         output_file = doc_output_folder / f"{session_page_slug(session)}.md"
-        video_file = resolve_session_video(
+        resolve_session_video(
             session=session,
             video_folder=video_folder,
             doc_output_folder=doc_output_folder,
@@ -347,8 +338,6 @@ def generate_doc(
         output_file.write_text(
             build_session_page(
                 session=session,
-                video_file=video_file,
-                doc_output_folder=doc_output_folder,
             ),
             encoding="utf-8",
         )
