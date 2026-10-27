@@ -77,3 +77,6 @@ exact file exists, is nonempty, and is included in the build. This checks availa
 not MP4 integrity. MkDocs copies the videos into the generated site.
 Rebuild after adding or removing videos and deploy the entire generated site,
 including its videos, together. The session videos remain ignored by Git.
+
+Sessions with fewer than 64 processed samples (the spectrogram segment length)
+are skipped with a warning; no MP4 is created and batch generation continues.

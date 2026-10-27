@@ -433,6 +433,15 @@ def generate_session_video(session_data: pd.DataFrame,
                            min_db: float | None = None,
                            max_db: float | None = None,
                            title_prefix: str = "Session Spectrogram"):
+    if len(session_data) < 64:
+        from warnings import warn
+        warn(
+            f"Skipping video for {title_prefix}: session has {len(session_data)} "
+            "samples; at least 64 are required for the spectrogram.",
+            stacklevel=2,
+        )
+        return None
+
     freq = infer_fs(session_data)
     fig, ax_map, axes = setup_figure_with_map()
 

@@ -87,7 +87,7 @@ def generate_session_video_file(
     sample_rate: int,
     video_window_size: int,
     overwrite_videos: bool,
-) -> Path:
+) -> Path | None:
     from potholes.tools.video import generate_session_video
 
     videos_output_folder = doc_output_folder / "videos"
@@ -100,13 +100,13 @@ def generate_session_video_file(
     click.echo(f"Generating video for {session['session_key']} -> {output_file}")
     session_data = load_session(session=session, sample_rate=sample_rate, verbose=False)
     title = f"{session['sensor_name']} {session['session_key']}"
-    generate_session_video(
+    result = generate_session_video(
         session_data=session_data,
         out_mp4=str(output_file),
         window_size=video_window_size,
         title_prefix=title,
     )
-    return output_file
+    return Path(result) if result is not None else None
 
 
 def resolve_session_video(
